@@ -16,7 +16,7 @@ Importing the Module
 First, import the module into your project:
 
 ```javascript
-const DomainNameAPI = require('./index');
+const DomainNameAPI = require('nodejs-dna');
 
 // Create an instance of your API class
 const api = new DomainNameAPI('user', 'pass');
@@ -67,5 +67,5 @@ api.ModifyPrivacyProtectionStatus('test.site', 1).then((res) => {
 Feel free to contribute by submitting issues or pull requests.
 
 ## License
-This project is licensed under the MIT License.
+This project is licensed under the [Apache License 2.0](./LICENSE). You are free to use, modify, distribute, and fork it, including for commercial purposes.
 

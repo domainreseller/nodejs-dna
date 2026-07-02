@@ -4,7 +4,7 @@ const crypto = require('crypto');
 const fs = require('fs');
 
 class DomainNameAPI {
-  static VERSION = '2.0.14';
+  static VERSION = '3.0.0';
 
   constructor(
       userName = 'ownername', password = 'ownerpass', testMode = false) {

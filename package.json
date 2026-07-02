@@ -1,15 +1,42 @@
 {
   "name": "nodejs-dna",
-  "version": "1.0.3",
+  "version": "3.0.0",
+  "description": "A Node.js wrapper for the Domain Name API (domainnameapi.com) — manage domains, contacts, transfers and more over SOAP.",
   "main": "index.js",
-  "scripts": {
-    "test": "node test.js",
-    "test-register": "node test-register.js"
+  "engines": {
+    "node": ">=16"
   },
-  "keywords": [],
+  "files": [
+    "index.js",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "test": "node test/smoke.js",
+    "example": "node test.js",
+    "example:register": "node test-register.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/xa81/nodejs-dna.git"
+  },
+  "homepage": "https://github.com/xa81/nodejs-dna#readme",
+  "bugs": {
+    "url": "https://github.com/xa81/nodejs-dna/issues"
+  },
+  "keywords": [
+    "domainnameapi",
+    "domain-name-api",
+    "dna",
+    "domain",
+    "domains",
+    "registrar",
+    "whmcs",
+    "soap",
+    "reseller"
+  ],
   "author": "Atak Domain",
-  "license": "ISC",
-  "description": "A Node.js wrapper for the Domain Name API",
+  "license": "Apache-2.0",
   "dependencies": {
     "axios": "^1.7.7",
     "strong-soap": "^4.1.4"

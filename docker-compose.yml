@@ -1,0 +1,34 @@
+version: '3.8'
+
+services:
+  nodejs-dna:
+    build: .
+    container_name: nodejs-dna-test
+    environment:
+      - NODE_ENV=production
+    volumes:
+      - .:/app
+      - /app/node_modules
+    working_dir: /app
+    command: ["node", "test.js"]
+    networks:
+      - dna-network
+
+  nodejs-dna-register:
+    build: .
+    container_name: nodejs-dna-register-test
+    environment:
+      - NODE_ENV=production
+    volumes:
+      - .:/app
+      - /app/node_modules
+    working_dir: /app
+    command: ["node", "test-register.js"]
+    networks:
+      - dna-network
+    depends_on:
+      - nodejs-dna
+
+networks:
+  dna-network:
+    driver: bridge
