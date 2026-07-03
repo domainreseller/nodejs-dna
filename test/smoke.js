@@ -1,6 +1,7 @@
 // Network-free smoke test used by CI (`npm test`).
-// Verifies the facade loads, routes by username, and exposes the full method
-// surface — WITHOUT hitting the SOAP/REST endpoints.
+// Verifies the facade loads, routes by username, exposes the full method
+// surface, and that REST methods are wired to real implementations —
+// WITHOUT hitting the SOAP/REST endpoints.
 
 const assert = require('node:assert');
 const DomainNameApi = require('../index');
@@ -21,4 +22,23 @@ for (const method of expectedMethods) {
   assert.strictEqual(typeof soapApi[method], 'function', `facade should expose ${method}()`);
 }
 
-console.log(`✓ nodejs-dna smoke test passed (v${DomainNameApi.VERSION}, SOAP+REST routing OK, ${expectedMethods.length} methods checked)`);
+// Async assertions: prove REST methods are real implementations (not skeletons)
+// by stubbing the HTTP core and verifying the full envelope mapping works.
+(async () => {
+  // Stub the underlying HTTP request so no network call is made.
+  restApi.client.request = async () => ({
+    id: 1,
+    status: 0,
+    domainName: 'example.com',
+    nameservers: [],
+  });
+
+  const details = await restApi.GetDetails('example.com');
+  assert.strictEqual(details.result, 'OK', 'GetDetails should return result OK');
+  assert.strictEqual(details.data.DomainName, 'example.com', 'GetDetails should return correct DomainName');
+
+  console.log(`✓ nodejs-dna smoke test passed (v${DomainNameApi.VERSION}, SOAP+REST routing OK, ${expectedMethods.length} methods checked, REST methods verified)`);
+})().catch((err) => {
+  console.error('SMOKE TEST FAILED:', err.message);
+  process.exit(1);
+});
