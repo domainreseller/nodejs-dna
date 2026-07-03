@@ -3,7 +3,7 @@
 const https = require('node:https');
 const axios = require('axios');
 const { REST_URL_PROD, REST_URL_OTE, BUSINESS_METHODS, DEFAULT_TIMEOUT, setError, formatErrorCode, RESULT_OK } = require('./shared');
-const { parseDomainInfo, parseContactInfo, normalizeDomainStatus, formatApiDate } = require('./rest-normalize');
+const { parseDomainInfo, parseContactInfo, parseContact, normalizeDomainStatus, formatApiDate } = require('./rest-normalize');
 
 // Module-level axios instance: never throws on non-2xx; SSL verification off.
 const _httpsAgent = new https.Agent({ rejectUnauthorized: false });
@@ -640,6 +640,146 @@ DNARest.prototype.ModifyChildNameServer = async function ModifyChildNameServer(d
   } catch (err) {
     return setError(
       err.statusCode || 'MODIFY_CHILD_NS',
+      err.message,
+      (this.lastParsedResponse && this.lastParsedResponse.Details) ||
+        (this.lastResponse && this.lastResponse.raw_response) ||
+        err.message,
+    );
+  }
+};
+
+// ---------------------------------------------------------------------------
+// Task 8: Transfer group — Transfer, CancelTransfer, ApproveTransfer, RejectTransfer
+// PHP source: DNARest.php lines 1111–1138 (#12), 1145–1164 (#13), 1171–1190 (#14), 1197–1216 (#15)
+// ---------------------------------------------------------------------------
+
+/**
+ * Initiate a domain transfer.
+ * POST domains/transfer
+ * PHP lines 1111–1138.
+ *
+ * contacts mirrors PHP's associative array: { Administrative: {...}, Technical: {...}, ... }
+ * Each entry is mapped via parseContact(details, ucfirst(strtolower(type))) before
+ * being sent to the gateway, matching the PHP foreach loop exactly.
+ * An empty array (default) sends an empty contacts array in the payload.
+ *
+ * @param {string}       domainName
+ * @param {string}       eppCode     EPP/auth code for the transfer
+ * @param {number}       period      Registration period in years
+ * @param {Object|Array} [contacts=[]]  Contact objects keyed by type
+ */
+DNARest.prototype.Transfer = async function Transfer(domainName, eppCode, period, contacts = []) {
+  try {
+    const payloadContacts = [];
+    const hasContacts = Array.isArray(contacts) ? contacts.length > 0 : Object.keys(contacts).length > 0;
+    if (hasContacts) {
+      // Support both object { Administrative: {...} } and array [{ type, ... }] forms.
+      const entries = Array.isArray(contacts)
+        ? contacts.map((c) => { const { type = 'Registrant', ...rest } = c; return [type, rest]; })
+        : Object.entries(contacts);
+      for (const [type, details] of entries) {
+        // PHP: ucfirst(strtolower($type)) — first char upper, rest lower
+        const normalized = String(type).charAt(0).toUpperCase() + String(type).slice(1).toLowerCase();
+        payloadContacts.push(parseContact(details, normalized));
+      }
+    }
+
+    const payload = {
+      domainName,
+      authCode: eppCode,
+      period,
+      contacts: payloadContacts,
+    };
+
+    const response = await this.request('POST', 'domains/transfer', payload);
+    return parseDomainInfo(response);
+  } catch (err) {
+    return setError(
+      err.statusCode || 'TRANSFER_DOMAIN',
+      err.message,
+      (this.lastParsedResponse && this.lastParsedResponse.Details) ||
+        (this.lastResponse && this.lastResponse.raw_response) ||
+        err.message,
+    );
+  }
+};
+
+/**
+ * Cancel a pending incoming transfer.
+ * POST domains/transfers/cancel
+ * PHP lines 1145–1164.
+ *
+ * @param {string} domainName
+ */
+DNARest.prototype.CancelTransfer = async function CancelTransfer(domainName) {
+  try {
+    const response = await this.request('POST', 'domains/transfers/cancel', { domainName });
+    return {
+      result: RESULT_OK,
+      data: {
+        DomainName: domainName,
+        Status:     response.status ?? 'Cancelled',
+      },
+    };
+  } catch (err) {
+    return setError(
+      err.statusCode || 'CANCEL_TRANSFER',
+      err.message,
+      (this.lastParsedResponse && this.lastParsedResponse.Details) ||
+        (this.lastResponse && this.lastResponse.raw_response) ||
+        err.message,
+    );
+  }
+};
+
+/**
+ * Approve a pending outgoing transfer.
+ * POST domains/transfers/approve
+ * PHP lines 1171–1190.
+ *
+ * @param {string} domainName
+ */
+DNARest.prototype.ApproveTransfer = async function ApproveTransfer(domainName) {
+  try {
+    const response = await this.request('POST', 'domains/transfers/approve', { domainName });
+    return {
+      result: RESULT_OK,
+      data: {
+        DomainName: domainName,
+        Status:     response.status ?? 'Approved',
+      },
+    };
+  } catch (err) {
+    return setError(
+      err.statusCode || 'APPROVE_TRANSFER',
+      err.message,
+      (this.lastParsedResponse && this.lastParsedResponse.Details) ||
+        (this.lastResponse && this.lastResponse.raw_response) ||
+        err.message,
+    );
+  }
+};
+
+/**
+ * Reject a pending outgoing transfer.
+ * POST domains/transfers/reject
+ * PHP lines 1197–1216.
+ *
+ * @param {string} domainName
+ */
+DNARest.prototype.RejectTransfer = async function RejectTransfer(domainName) {
+  try {
+    const response = await this.request('POST', 'domains/transfers/reject', { domainName });
+    return {
+      result: RESULT_OK,
+      data: {
+        DomainName: domainName,
+        Status:     response.status ?? 'Rejected',
+      },
+    };
+  } catch (err) {
+    return setError(
+      err.statusCode || 'REJECT_TRANSFER',
       err.message,
       (this.lastParsedResponse && this.lastParsedResponse.Details) ||
         (this.lastResponse && this.lastResponse.raw_response) ||
