@@ -3,7 +3,7 @@
 const https = require('node:https');
 const axios = require('axios');
 const { REST_URL_PROD, REST_URL_OTE, BUSINESS_METHODS, DEFAULT_TIMEOUT, setError, formatErrorCode, RESULT_OK } = require('./shared');
-const { parseDomainInfo, parseContactInfo } = require('./rest-normalize');
+const { parseDomainInfo, parseContactInfo, normalizeDomainStatus, formatApiDate } = require('./rest-normalize');
 
 // Module-level axios instance: never throws on non-2xx; SSL verification off.
 const _httpsAgent = new https.Agent({ rejectUnauthorized: false });
@@ -281,6 +281,251 @@ DNARest.prototype.GetCurrentBalance = async function GetCurrentBalance(currencyI
       CurrencyName:     mapped.name,
       CurrencySymbol:   mapped.symbol,
     };
+  }
+};
+
+// ---------------------------------------------------------------------------
+// Task 6: Search / list group — CheckAvailability, GetList, GetTldList
+// PHP source: DNARest.php lines 613–665 (#3), 672–725 (#4), 732–812 (#5)
+// ---------------------------------------------------------------------------
+
+/**
+ * Check domain availability for a cartesian product of names × extensions.
+ * POST domains/bulk-search
+ * Returns a DIRECT ARRAY (not a {result:'OK'} envelope) on success.
+ * PHP lines 613–665.
+ *
+ * @param {string[]} domains     e.g. ['example', 'test']
+ * @param {string[]} extensions  e.g. ['com', '.net']
+ * @param {number}   period      default period when API item has none
+ * @param {string}   [command]   'create' by default
+ * @returns {Promise<Array|{result:'ERROR', error:{...}}>}
+ */
+DNARest.prototype.CheckAvailability = async function CheckAvailability(
+  domains, extensions, period, command = 'create',
+) {
+  try {
+    const queries = [];
+    for (const domain of domains) {
+      for (const tld of extensions) {
+        queries.push({ domainName: domain + '.' + tld.replace(/^\./, '') });
+      }
+    }
+
+    if (queries.length === 0) {
+      return setError('AVAILABILITY', 'Domain names not found.', 'No domain names provided for availability check');
+    }
+
+    const response = await this.request('POST', 'domains/bulk-search', queries);
+
+    const availabilityData = [];
+    const items = (response && response.infos) ? response.infos : response;
+    if (Array.isArray(items)) {
+      for (const item of items) {
+        if (!item || typeof item !== 'object') continue;
+
+        const rawTld = item.tld != null
+          ? String(item.tld).toLowerCase()
+          : (() => {
+              const dn = String(item.domainName || '');
+              const idx = dn.lastIndexOf('.');
+              return idx >= 0 ? dn.slice(idx + 1).toLowerCase() : '';
+            })();
+
+        const domainRaw = String(item.domainName || '').toLowerCase();
+        const domainName = rawTld ? domainRaw.replace('.' + rawTld, '') : domainRaw;
+
+        const status = String(item.status != null ? item.status : '').toLowerCase();
+        const isAvailable = ['available', '1', 'true'].includes(status);
+
+        const rawPrice = item.price != null ? parseFloat(item.price) : null;
+
+        availabilityData.push({
+          TLD:        rawTld,
+          DomainName: domainName,
+          Status:     isAvailable ? 'available' : 'notavailable',
+          Command:    command,
+          Period:     item.period != null ? item.period : period,
+          IsFee:      item.isPremium != null ? item.isPremium : false,
+          Price:      rawPrice != null ? rawPrice.toFixed(4) : null,
+          Currency:   item.currency != null ? item.currency : null,
+          Reason:     item.reason != null ? item.reason : null,
+        });
+      }
+    }
+
+    return availabilityData;
+  } catch (err) {
+    return setError(
+      formatErrorCode(err.statusCode) || 'AVAILABILITY',
+      err.message,
+      (this.lastParsedResponse && this.lastParsedResponse.Details) ||
+        (this.lastResponse && this.lastResponse.raw_response) ||
+        err.message,
+    );
+  }
+};
+
+/**
+ * Get list of domains in the reseller account.
+ * GET domains {MaxResultCount:200, SkipCount:0, ...extra_parameters}
+ * PHP lines 672–725.
+ *
+ * @param {Object} [extra_parameters={}]
+ * @returns {Promise<{result:string, TotalCount:number, data:{Domains:Array}}>}
+ */
+DNARest.prototype.GetList = async function GetList(extra_parameters = {}) {
+  try {
+    const params = Object.assign({ MaxResultCount: 200, SkipCount: 0 }, extra_parameters);
+    const response = await this.request('GET', 'domains', params);
+
+    const domains = Array.isArray(response && response.items)
+      ? response.items.map((item) => {
+          // Prefer statusCode label > statusText > numeric status resolution.
+          let status;
+          if (item.statusCode != null && String(item.statusCode) !== '' && !/^\d+$/.test(String(item.statusCode))) {
+            status = String(item.statusCode);
+          } else if (item.statusText != null && String(item.statusText) !== '' && !/^\d+$/.test(String(item.statusText))) {
+            status = String(item.statusText);
+          } else {
+            status = normalizeDomainStatus(item.status != null ? item.status : '');
+          }
+
+          return {
+            ID:                      parseInt(item.id) || 0,
+            Status:                  status,
+            DomainName:              item.domainName != null ? String(item.domainName) : '',
+            AuthCode:                item.authCode != null ? String(item.authCode) : '',
+            LockStatus:              item.lockStatus ? 'true' : 'false',
+            PrivacyProtectionStatus: item.privacyProtectionStatus ? 'true' : 'false',
+            IsChildNameServer:       (item.hosts && item.hosts.length > 0) ? 'true' : 'false',
+            Contacts: {
+              Billing:        { ID: '' },
+              Technical:      { ID: '' },
+              Administrative: { ID: '' },
+              Registrant:     { ID: '' },
+            },
+            Dates: {
+              Start:         formatApiDate(item.startDate != null ? item.startDate : null),
+              Expiration:    formatApiDate(item.expirationDate != null ? item.expirationDate : null),
+              RemainingDays: parseInt(item.remainingDay) || 0,
+            },
+            NameServers:      Array.isArray(item.nameServers) ? item.nameServers : [],
+            Additional:       [],
+            ChildNameServers: [],
+          };
+        })
+      : [];
+
+    return {
+      result:     RESULT_OK,
+      TotalCount: parseInt((response && response.totalCount) || 0) || 0,
+      data: { Domains: domains },
+    };
+  } catch (err) {
+    return setError(
+      formatErrorCode(err.statusCode) || 'DOMAIN_LIST',
+      err.message,
+      (this.lastParsedResponse && this.lastParsedResponse.Details) ||
+        (this.lastResponse && this.lastResponse.raw_response) ||
+        err.message,
+    );
+  }
+};
+
+/**
+ * Get TLD list with pricing matrix.
+ * GET products/tlds {MaxResultCount:count, SkipCount:0}
+ * PHP lines 732–812.
+ *
+ * Pricing: built from prices[0][apiType]; period 0 → 1; sorted ascending.
+ * Source key typo 'maxLenght' (missing 't') preserved verbatim.
+ *
+ * @param {number} [count=20]
+ * @returns {Promise<{result:string, data:Array}>}
+ */
+DNARest.prototype.GetTldList = async function GetTldList(count = 20) {
+  try {
+    const response = await this.get('products/tlds', { MaxResultCount: count, SkipCount: 0 });
+
+    const priceTypeMap = {
+      register:  'registration',
+      renew:     'renew',
+      transfer:  'transfer',
+      restore:   'restore',
+      refund:    'refund',
+      backorder: 'backorder',
+    };
+
+    const tldData = [];
+    let idCounter = 1;
+
+    if (response && Array.isArray(response.items)) {
+      for (const tld of response.items) {
+        const pricing    = {};
+        const currencies = {};
+
+        const pricesArr = tld.prices && tld.prices[0];
+        if (pricesArr && typeof pricesArr === 'object') {
+          for (const [apiType, outType] of Object.entries(priceTypeMap)) {
+            const apiValue = pricesArr[apiType];
+            if (apiValue == null) continue;
+
+            if (Array.isArray(apiValue) && apiValue[0] != null) {
+              // Array of price objects
+              for (const priceInfo of apiValue) {
+                if (!priceInfo || typeof priceInfo !== 'object') continue;
+                let p = parseInt(priceInfo.period != null ? priceInfo.period : 1) || 1;
+                if (p < 1) p = 1;
+                const price = priceInfo.price != null ? parseFloat(priceInfo.price).toFixed(4) : '0.0000';
+                if (!pricing[outType]) pricing[outType] = {};
+                pricing[outType][p] = price;
+                currencies[outType] = priceInfo.currency != null ? priceInfo.currency : '';
+              }
+            } else if (apiValue && typeof apiValue === 'object') {
+              // Single price object
+              let p = parseInt(apiValue.period != null ? apiValue.period : 1) || 1;
+              if (p < 1) p = 1;
+              const price = apiValue.price != null ? parseFloat(apiValue.price).toFixed(4) : '0.0000';
+              if (!pricing[outType]) pricing[outType] = {};
+              pricing[outType][p] = price;
+              currencies[outType] = apiValue.currency != null ? apiValue.currency : '';
+            }
+          }
+        }
+
+        // Sort pricing by period key numerically (SOAP ascending order)
+        for (const outType of Object.keys(pricing)) {
+          const sorted = {};
+          for (const k of Object.keys(pricing[outType]).map(Number).sort((a, b) => a - b)) {
+            sorted[k] = pricing[outType][k];
+          }
+          pricing[outType] = sorted;
+        }
+
+        tldData.push({
+          id:        idCounter++,
+          status:    tld.status != null ? tld.status : 'Active',
+          maxchar:   (tld.constraints && tld.constraints.maxLenght != null) ? tld.constraints.maxLenght : 63,
+          maxperiod: tld.maxRegistrationPeriod != null ? tld.maxRegistrationPeriod : 10,
+          minchar:   (tld.constraints && tld.constraints.minLength != null) ? tld.constraints.minLength : 1,
+          minperiod: tld.minRegistrationPeriod != null ? tld.minRegistrationPeriod : 1,
+          tld:       tld.name,
+          pricing,
+          currencies,
+        });
+      }
+    }
+
+    return { result: RESULT_OK, data: tldData };
+  } catch (err) {
+    return setError(
+      formatErrorCode(err.statusCode) || 'TLD_LIST',
+      err.message,
+      (this.lastParsedResponse && this.lastParsedResponse.Details) ||
+        (this.lastResponse && this.lastResponse.raw_response) ||
+        err.message,
+    );
   }
 };
 
