@@ -530,6 +530,125 @@ DNARest.prototype.GetTldList = async function GetTldList(count = 20) {
 };
 
 // ---------------------------------------------------------------------------
+// Task 7: Child nameserver group — AddChildNameServer, DeleteChildNameServer,
+//         ModifyChildNameServer
+// PHP source: DNARest.php lines 919–948 (#7), 956–978 (#8), 987–1017 (#9)
+// All three hit endpoint domains/dns/host with different HTTP verbs.
+// ---------------------------------------------------------------------------
+
+/**
+ * Add a child nameserver to a domain.
+ * POST domains/dns/host
+ * PHP lines 919–948.
+ *
+ * ipVersion: 'v6' if ipAddress contains ':', else 'v4' (mirrors PHP
+ * filter_var($ip, FILTER_VALIDATE_IP, FILTER_FLAG_IPV4) ? 'v4' : 'v6').
+ * Note: response key 'IPAdresses' carries a one-'d' typo — preserved verbatim.
+ *
+ * @param {string} domainName
+ * @param {string} nameServer  hostname of the child nameserver (e.g. ns1.example.com)
+ * @param {string} ipAddress   IPv4 or IPv6 address
+ */
+DNARest.prototype.AddChildNameServer = async function AddChildNameServer(domainName, nameServer, ipAddress) {
+  try {
+    const ipVersion = ipAddress.includes(':') ? 'v6' : 'v4';
+    const payload = {
+      domainName,
+      hostName:    nameServer,
+      ipAddresses: [{ ipAddress, ipVersion }],
+    };
+    await this.request('POST', 'domains/dns/host', payload);
+    return {
+      result: RESULT_OK,
+      data: {
+        NameServer: nameServer,
+        IPAdresses: [ipAddress],   // one-'d' typo preserved from PHP line 938
+      },
+    };
+  } catch (err) {
+    return setError(
+      err.statusCode || 'ADD_CHILD_NS',
+      err.message,
+      (this.lastParsedResponse && this.lastParsedResponse.Details) ||
+        (this.lastResponse && this.lastResponse.raw_response) ||
+        err.message,
+    );
+  }
+};
+
+/**
+ * Delete a child nameserver from a domain.
+ * DELETE domains/dns/host (params sent as query string)
+ * PHP lines 956–978.
+ *
+ * @param {string} domainName
+ * @param {string} nameServer  hostname of the child nameserver to remove
+ */
+DNARest.prototype.DeleteChildNameServer = async function DeleteChildNameServer(domainName, nameServer) {
+  try {
+    const payload = {
+      domainName,
+      hostName: nameServer,
+    };
+    await this.request('DELETE', 'domains/dns/host', payload);
+    return {
+      result: RESULT_OK,
+      data: { NameServer: nameServer },
+    };
+  } catch (err) {
+    return setError(
+      err.statusCode || 'DELETE_CHILD_NS',
+      err.message,
+      (this.lastParsedResponse && this.lastParsedResponse.Details) ||
+        (this.lastResponse && this.lastResponse.raw_response) ||
+        err.message,
+    );
+  }
+};
+
+/**
+ * Modify the IP address of an existing child nameserver.
+ * PUT domains/dns/host
+ * PHP lines 987–1017.
+ *
+ * newHostName is set to the same value as hostName (rename not supported here).
+ * Response fallbacks: NameServer → response.hostName ?? nameServer,
+ *                     IPAdresses → response.ipAddresses ?? [ipAddress]
+ * Note: 'IPAdresses' typo preserved verbatim (one 'd').
+ *
+ * @param {string} domainName
+ * @param {string} nameServer  existing hostname
+ * @param {string} ipAddress   new IP address
+ */
+DNARest.prototype.ModifyChildNameServer = async function ModifyChildNameServer(domainName, nameServer, ipAddress) {
+  try {
+    const ipVersion = ipAddress.includes(':') ? 'v6' : 'v4';
+    const payload = {
+      domainName,
+      hostName:    nameServer,
+      newHostName: nameServer,
+      ipAddresses: [{ ipAddress, ipVersion }],
+    };
+    const response = await this.request('PUT', 'domains/dns/host', payload);
+    return {
+      result: RESULT_OK,
+      data: {
+        NameServer: (response && response.hostName != null ? response.hostName : null) ?? nameServer,
+        IPAdresses: (response && response.ipAddresses != null ? response.ipAddresses : null) ?? [ipAddress],
+      },
+    };
+  } catch (err) {
+    return setError(
+      err.statusCode || 'MODIFY_CHILD_NS',
+      err.message,
+      (this.lastParsedResponse && this.lastParsedResponse.Details) ||
+        (this.lastResponse && this.lastResponse.raw_response) ||
+        err.message,
+    );
+  }
+};
+
+// ---------------------------------------------------------------------------
 
 // Install skeletons that throw until the method-specific task fills them in.
 // The loop only writes to names NOT already defined on the prototype, so the
