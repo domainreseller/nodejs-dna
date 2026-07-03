@@ -215,6 +215,16 @@ test('GetCurrentBalance FAILED envelope preserves currency mapping for TRY', asy
 // Skeleton guard — real methods must NOT be skeletons
 // ---------------------------------------------------------------------------
 
+test('GetCurrentBalance: non-HTTP error yields ErrorCode BALANCE not "undefined"', async () => {
+  const c = new DNARest('r', 't');
+  c.request = async () => { throw new Error('boom'); };
+  const out = await c.GetCurrentBalance('USD');
+  assert.strictEqual(out.OperationResult, 'FAILED');
+  assert.notStrictEqual(out.ErrorCode, 'undefined');
+  assert.notStrictEqual(out.ErrorCode, 'API_undefined');
+  assert.strictEqual(out.ErrorCode, 'BALANCE');
+});
+
 test('GetResellerDetails and GetCurrentBalance are real methods (not skeletons)', () => {
   const c = new DNARest('r', 't');
   for (const name of ['GetResellerDetails', 'GetCurrentBalance']) {

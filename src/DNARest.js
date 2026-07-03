@@ -272,7 +272,7 @@ DNARest.prototype.GetCurrentBalance = async function GetCurrentBalance(currencyI
     // Error envelope preserves the same shape — OperationResult signals failure.
     // PHP line 593: formatErrorCode($e->getCode()) ?: 'BALANCE'
     return {
-      ErrorCode:        formatErrorCode(err.statusCode) || 'BALANCE',
+      ErrorCode:        err.statusCode ? formatErrorCode(err.statusCode) : 'BALANCE',
       OperationMessage: err.message,
       OperationResult:  'FAILED',
       Balance:          '0.00',
@@ -357,7 +357,7 @@ DNARest.prototype.CheckAvailability = async function CheckAvailability(
     return availabilityData;
   } catch (err) {
     return setError(
-      formatErrorCode(err.statusCode) || 'AVAILABILITY',
+      err.statusCode || 'AVAILABILITY',
       err.message,
       (this.lastParsedResponse && this.lastParsedResponse.Details) ||
         (this.lastResponse && this.lastResponse.raw_response) ||
@@ -424,7 +424,7 @@ DNARest.prototype.GetList = async function GetList(extra_parameters = {}) {
     };
   } catch (err) {
     return setError(
-      formatErrorCode(err.statusCode) || 'DOMAIN_LIST',
+      err.statusCode || 'DOMAIN_LIST',
       err.message,
       (this.lastParsedResponse && this.lastParsedResponse.Details) ||
         (this.lastResponse && this.lastResponse.raw_response) ||
@@ -520,7 +520,7 @@ DNARest.prototype.GetTldList = async function GetTldList(count = 20) {
     return { result: RESULT_OK, data: tldData };
   } catch (err) {
     return setError(
-      formatErrorCode(err.statusCode) || 'TLD_LIST',
+      err.statusCode || 'TLD_LIST',
       err.message,
       (this.lastParsedResponse && this.lastParsedResponse.Details) ||
         (this.lastResponse && this.lastResponse.raw_response) ||

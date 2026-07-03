@@ -449,3 +449,37 @@ test('GetTldList: returns error envelope on HTTP exception', async () => {
   assert.strictEqual(out.result, 'ERROR');
   assert.strictEqual(out.error.Code, 'API_401');
 });
+
+// ---------------------------------------------------------------------------
+// Non-HTTP error fallback (regression: Code must not be 'undefined')
+// ---------------------------------------------------------------------------
+
+test('CheckAvailability: non-HTTP error yields Code AVAILABILITY not "undefined"', async () => {
+  const c = new DNARest('r', 't');
+  c.request = async () => { throw new Error('boom'); };
+  const out = await c.CheckAvailability(['x'], ['com'], 1);
+  assert.strictEqual(out.result, 'ERROR');
+  assert.notStrictEqual(out.error.Code, 'undefined');
+  assert.notStrictEqual(out.error.Code, 'API_undefined');
+  assert.strictEqual(out.error.Code, 'AVAILABILITY');
+});
+
+test('GetList: non-HTTP error yields Code DOMAIN_LIST not "undefined"', async () => {
+  const c = new DNARest('r', 't');
+  c.request = async () => { throw new Error('boom'); };
+  const out = await c.GetList();
+  assert.strictEqual(out.result, 'ERROR');
+  assert.notStrictEqual(out.error.Code, 'undefined');
+  assert.notStrictEqual(out.error.Code, 'API_undefined');
+  assert.strictEqual(out.error.Code, 'DOMAIN_LIST');
+});
+
+test('GetTldList: non-HTTP error yields Code TLD_LIST not "undefined"', async () => {
+  const c = new DNARest('r', 't');
+  c.request = async () => { throw new Error('boom'); };
+  const out = await c.GetTldList();
+  assert.strictEqual(out.result, 'ERROR');
+  assert.notStrictEqual(out.error.Code, 'undefined');
+  assert.notStrictEqual(out.error.Code, 'API_undefined');
+  assert.strictEqual(out.error.Code, 'TLD_LIST');
+});
