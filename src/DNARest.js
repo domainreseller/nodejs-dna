@@ -2,8 +2,8 @@
 
 const https = require('node:https');
 const axios = require('axios');
-const { REST_URL_PROD, REST_URL_OTE, BUSINESS_METHODS, DEFAULT_TIMEOUT, setError, formatErrorCode, RESULT_OK } = require('./shared');
-const { parseDomainInfo, parseContactInfo, parseContact, normalizeDomainStatus, formatApiDate } = require('./rest-normalize');
+const { REST_URL_PROD, REST_URL_OTE, BUSINESS_METHODS, DEFAULT_TIMEOUT, setError, formatErrorCode, RESULT_OK, DEFAULT_NAMESERVERS } = require('./shared');
+const { parseDomainInfo, parseContactInfo, parseContact, normalizeDomainStatus, formatApiDate, normalizeTrAttributes, stringifyAttributes } = require('./rest-normalize');
 
 // Module-level axios instance: never throws on non-2xx; SSL verification off.
 const _httpsAgent = new https.Agent({ rejectUnauthorized: false });
@@ -915,6 +915,112 @@ DNARest.prototype.SaveContacts = async function SaveContacts(domainName, contact
   } catch (err) {
     return setError(
       err.statusCode || 'SAVE_CONTACTS',
+      err.message,
+      (this.lastParsedResponse && this.lastParsedResponse.Details) ||
+        (this.lastResponse && this.lastResponse.raw_response) ||
+        err.message,
+    );
+  }
+};
+
+// ---------------------------------------------------------------------------
+// Task 10: RegisterWithContactInfo
+// PHP source: DNARest.php lines 1264–1336 (#17)
+// POST domains/register-with-contacts with full contact payload and
+// per-TLD attribute handling for .tr domains.
+// ---------------------------------------------------------------------------
+
+/**
+ * Register a domain with full contact information.
+ * POST domains/register-with-contacts
+ * PHP lines 1264–1336.
+ *
+ * Rules (mirroring PHP exactly):
+ *  1. Nameserver fallback: strip blank/empty NS entries; if the resulting list
+ *     is empty, fall back to DEFAULT_NAMESERVERS (same as PHP lines 1282–1291).
+ *  2. Contacts: map each entry via parseContact(details, ucfirst(strtolower(type))).
+ *  3. .tr domains: apply normalizeTrAttributes() to additionalAttributes (PHP 1300–1302).
+ *  4. Stringify all tldAttribute values via stringifyAttributes() (PHP 1308).
+ *  5. Empty tldAttributes → serialize as JSON {} (object), NEVER [] (PHP 1321–1323).
+ *
+ * @param {string}        domainName
+ * @param {number}        period
+ * @param {Object}        contacts             Associative: { Administrative: {...}, ... }
+ * @param {string[]}      [nameServers=[]]     Desired name-servers (empty → DEFAULT_NAMESERVERS)
+ * @param {boolean}       [eppLock=true]       Maps to payload key isLocked
+ * @param {boolean}       [privacyLock=false]  Maps to payload key privacyEnabled
+ * @param {Object|Array}  [additionalAttributes=[]]  TLD-specific attributes
+ */
+DNARest.prototype.RegisterWithContactInfo = async function RegisterWithContactInfo(
+  domainName, period, contacts, nameServers = [], eppLock = true, privacyLock = false, additionalAttributes = [],
+) {
+  try {
+    // Rule 2: map contacts object entries → REST contact array via parseContact.
+    // PHP: foreach ($contacts as $type => $details)
+    //        $payloadContacts[] = $this->parseContact($details, ucfirst(strtolower($type)));
+    const payloadContacts = [];
+    for (const [type, details] of Object.entries(contacts)) {
+      // ucfirst(strtolower($type))
+      const normalized = String(type).charAt(0).toUpperCase() + String(type).slice(1).toLowerCase();
+      payloadContacts.push(parseContact(details, normalized));
+    }
+
+    // Rule 1: strip blank/empty entries, then fall back to DEFAULT_NAMESERVERS.
+    // PHP lines 1282–1291
+    const filteredNS = Array.isArray(nameServers)
+      ? nameServers.filter((ns) => typeof ns === 'string' && ns.trim().length > 0)
+      : [];
+    const finalNS = filteredNS.length > 0 ? filteredNS : DEFAULT_NAMESERVERS;
+
+    // Coerce additionalAttributes to a plain object (mirrors PHP (array) cast).
+    let attrsObj;
+    if (Array.isArray(additionalAttributes) && additionalAttributes.length === 0) {
+      attrsObj = {};
+    } else if (Array.isArray(additionalAttributes)) {
+      attrsObj = Object.assign({}, additionalAttributes);
+    } else if (additionalAttributes && typeof additionalAttributes === 'object') {
+      attrsObj = Object.assign({}, additionalAttributes);
+    } else {
+      attrsObj = {};
+    }
+
+    // Rule 3: .tr domain → normalize legacy TRABIS attributes.
+    // PHP: if (substr(strtolower($domainName), -3) === '.tr') — lines 1300–1302
+    if (String(domainName).toLowerCase().slice(-3) === '.tr') {
+      const normalized = normalizeTrAttributes(attrsObj);
+      // normalizeTrAttributes returns [] for non-object input; safe-convert.
+      attrsObj = Array.isArray(normalized) && normalized.length === 0 ? {} : (normalized || {});
+    }
+
+    // Rule 4: coerce every tldAttribute value to a string.
+    // PHP line 1308
+    attrsObj = stringifyAttributes(Array.isArray(attrsObj) ? {} : attrsObj);
+
+    // Rule 5: empty tldAttributes MUST serialize as JSON {} not [].
+    // PHP: empty($additionalAttributes) ? new \stdClass() : (object) $additionalAttributes
+    const tldAttributes = (Object.keys(attrsObj).length === 0) ? {} : attrsObj;
+
+    const payload = {
+      domainName,
+      period,
+      nameServers:    finalNS,
+      isLocked:       eppLock,
+      privacyEnabled: privacyLock,
+      contacts:       payloadContacts,
+      tldAttributes,
+    };
+
+    const response = await this.request('POST', 'domains/register-with-contacts', payload);
+    return parseDomainInfo(response);
+  } catch (err) {
+    // err.statusCode is undefined for network errors — fall back to named code.
+    // setError() calls formatErrorCode() internally, producing 'API_XXX' for
+    // numeric status codes and passing the string through unchanged otherwise.
+    // (PHP: formatErrorCode($e->getCode()) ?: 'REGISTER_DOMAIN' — PHP's getCode()
+    // always returns a number, so the ?: never fires in PHP; here we preserve the
+    // JS-ecosystem pattern used by all other methods.)
+    return setError(
+      err.statusCode || 'REGISTER_DOMAIN',
       err.message,
       (this.lastParsedResponse && this.lastParsedResponse.Details) ||
         (this.lastResponse && this.lastResponse.raw_response) ||
