@@ -2,7 +2,8 @@
 
 const https = require('node:https');
 const axios = require('axios');
-const { REST_URL_PROD, REST_URL_OTE, BUSINESS_METHODS, DEFAULT_TIMEOUT, setError } = require('./shared');
+const { REST_URL_PROD, REST_URL_OTE, BUSINESS_METHODS, DEFAULT_TIMEOUT, setError, RESULT_OK } = require('./shared');
+const { parseDomainInfo, parseContactInfo } = require('./rest-normalize');
 
 // Module-level axios instance: never throws on non-2xx; SSL verification off.
 const _httpsAgent = new https.Agent({ rejectUnauthorized: false });
@@ -108,6 +109,80 @@ class DNARest {
     return this.request('DELETE', url, params);
   }
 }
+
+// ---------------------------------------------------------------------------
+// Task 4: Domain info group — GetDetails, SyncFromRegistry, GetContacts
+// PHP source: DNARest.php lines 819–832 (#6), 1572–1575 (#19), 1024–1066 (#10)
+// These must be assigned BEFORE the skeleton loop so the guard skips them.
+// ---------------------------------------------------------------------------
+
+/**
+ * Fetch full domain info for a single domain.
+ * GET domains/info {DomainName} → parseDomainInfo(raw)
+ */
+DNARest.prototype.GetDetails = async function GetDetails(domainName) {
+  try {
+    const raw = await this.request('GET', 'domains/info', { DomainName: domainName });
+    return parseDomainInfo(raw);
+  } catch (err) {
+    return setError(err.statusCode || 'DOMAIN_DETAILS', err.message, '');
+  }
+};
+
+/**
+ * Sync domain info from registry — pure passthrough to GetDetails.
+ * PHP: return $this->getDetails($domainName);  (lines 1572–1575)
+ */
+DNARest.prototype.SyncFromRegistry = async function SyncFromRegistry(domainName) {
+  return this.GetDetails(domainName);
+};
+
+/**
+ * Get contacts for a domain.
+ * GET domains/info {DomainName}; extract contacts array; map REST contactType
+ * (Admin→Administrative, Tech→Technical, Billing→Billing, Registrant→Registrant);
+ * call parseContactInfo per contact; return ordered Administrative, Billing,
+ * Registrant, Technical.
+ */
+DNARest.prototype.GetContacts = async function GetContacts(domainName) {
+  try {
+    const domainInfo = await this.request('GET', 'domains/info', { DomainName: domainName });
+
+    const typeMap = {
+      'Admin':      'Administrative',
+      'Billing':    'Billing',
+      'Tech':       'Technical',
+      'Registrant': 'Registrant',
+    };
+
+    const contacts = {};
+    if (Array.isArray(domainInfo.contacts)) {
+      for (const contactItem of domainInfo.contacts) {
+        const apiType = contactItem.contactType || '';
+        const soapKey = typeMap[apiType] !== undefined
+          ? typeMap[apiType]
+          : (apiType.charAt(0).toUpperCase() + apiType.slice(1).toLowerCase());
+        contacts[soapKey] = parseContactInfo(Object.assign({}, contactItem, { type: soapKey }));
+      }
+    }
+
+    const orderedContacts = {};
+    for (const key of ['Administrative', 'Billing', 'Registrant', 'Technical']) {
+      if (contacts[key] !== undefined) {
+        orderedContacts[key] = contacts[key];
+      }
+    }
+
+    return {
+      result: RESULT_OK,
+      data: { contacts: orderedContacts },
+    };
+  } catch (err) {
+    return setError(err.statusCode || 'GET_CONTACTS', err.message, '');
+  }
+};
+
+// ---------------------------------------------------------------------------
 
 // Install skeletons that throw until the method-specific task fills them in.
 // The loop only writes to names NOT already defined on the prototype, so the
