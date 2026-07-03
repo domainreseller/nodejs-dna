@@ -15,7 +15,9 @@ test('normal username routes to SOAP (no network on construct)', () => {
 
 test('facade delegates a method to the active client', () => {
   const api = new DomainNameApi('550e8400-e29b-41d4-a716-446655440000', 'token');
-  assert.throws(() => api.GetResellerDetails(), /not implemented yet \(Phase 2\)/); // delegated to DNARest skeleton
+  // GetResellerDetails is now implemented (Task 5) — delegation returns a Promise, not throws.
+  assert.ok(api.GetResellerDetails() instanceof Promise,
+    'facade must delegate GetResellerDetails and return a Promise');
 });
 
 test('VERSION is exposed', () => {

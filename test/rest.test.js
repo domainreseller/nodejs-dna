@@ -8,8 +8,10 @@ test('DNARest selects OTE base URL in test mode', () => {
   assert.strictEqual(new DNARest('id', 'tok', false).serviceUrl, REST_URL_PROD);
 });
 
-test('DNARest exposes the same method surface as DNASoap (skeletons throw)', () => {
+test('DNARest exposes the same method surface as DNASoap', () => {
   const c = new DNARest('id', 'tok');
+  // GetResellerDetails is now implemented (Task 5) — must return a Promise, not throw.
   assert.strictEqual(typeof c.GetResellerDetails, 'function');
-  assert.throws(() => c.GetResellerDetails(), /not implemented yet \(Phase 2\)/);
+  assert.ok(c.GetResellerDetails() instanceof Promise,
+    'GetResellerDetails must return a Promise (real implementation, not a skeleton)');
 });

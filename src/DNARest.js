@@ -2,7 +2,7 @@
 
 const https = require('node:https');
 const axios = require('axios');
-const { REST_URL_PROD, REST_URL_OTE, BUSINESS_METHODS, DEFAULT_TIMEOUT, setError, RESULT_OK } = require('./shared');
+const { REST_URL_PROD, REST_URL_OTE, BUSINESS_METHODS, DEFAULT_TIMEOUT, setError, formatErrorCode, RESULT_OK } = require('./shared');
 const { parseDomainInfo, parseContactInfo } = require('./rest-normalize');
 
 // Module-level axios instance: never throws on non-2xx; SSL verification off.
@@ -179,6 +179,108 @@ DNARest.prototype.GetContacts = async function GetContacts(domainName) {
     };
   } catch (err) {
     return setError(err.statusCode || 'GET_CONTACTS', err.message, '');
+  }
+};
+
+// ---------------------------------------------------------------------------
+// Task 5: Reseller account group — GetResellerDetails, GetCurrentBalance
+// PHP source: DNARest.php lines 507–554 (#1), 561–603 (#2)
+// Both hit GET deposit/accounts/me; they use distinct response envelopes.
+// ---------------------------------------------------------------------------
+
+/**
+ * Fetch reseller account details (id, name, balances).
+ * GET deposit/accounts/me — no query params.
+ * PHP lines 507–554.
+ */
+DNARest.prototype.GetResellerDetails = async function GetResellerDetails() {
+  try {
+    const resp = await this.request('GET', 'deposit/accounts/me', {});
+
+    if (resp != null && resp.resellerId !== undefined) {
+      return {
+        result:   RESULT_OK,
+        id:       resp.resellerId,
+        active:   true,
+        name:     resp.resellerName ?? '',
+        balance:  String(resp.usdBalance ?? 0),
+        currency: 'USD',
+        symbol:   '$',
+        balances: [
+          { balance: String(resp.usdBalance ?? 0), currency: 'USD', symbol: '$' },
+          { balance: String(resp.tryBalance ?? 0), currency: 'TL',  symbol: 'TL' },
+        ],
+      };
+    }
+
+    // resellerId absent — treat as bad credentials (mirrors PHP line 541–544).
+    return setError('CREDENTIALS', 'Invalid response format',
+      'Response does not contain required fields');
+
+  } catch (err) {
+    return setError(
+      err.statusCode || 'RESELLER_DETAILS',
+      err.message,
+      (this.lastParsedResponse && this.lastParsedResponse.Details) ||
+        (this.lastResponse && this.lastResponse.raw_response) ||
+        err.message,
+    );
+  }
+};
+
+// Currency lookup table: mirrors PHP lines 566–571.
+const _CURRENCY_MAP = {
+  USD: { id: 2, name: 'USD', symbol: '$'  },
+  TRY: { id: 1, name: 'TL',  symbol: 'TL' },
+  EUR: { id: 3, name: 'EUR', symbol: '€'  },
+  GBP: { id: 4, name: 'GBP', symbol: '£'  },
+};
+
+/**
+ * Get current balance for the given currency.
+ * GET deposit/accounts/me {currency: <UPPERCASED>}
+ * Returns a DISTINCT envelope (not {result:'OK'}), matching SOAP parity.
+ * PHP lines 561–603.
+ *
+ * number_format(x, 2, '.', '') → JS: parseFloat(x || 0).toFixed(2)
+ * (2 decimal places, dot separator, no thousands separator — identical output)
+ *
+ * @param {string} [currencyId='USD']
+ */
+DNARest.prototype.GetCurrentBalance = async function GetCurrentBalance(currencyId = 'USD') {
+  const currencyName = String(currencyId).toUpperCase();
+  const mapped = _CURRENCY_MAP[currencyName] || { id: 0, name: currencyName, symbol: '' };
+
+  try {
+    const resp = await this.request('GET', 'deposit/accounts/me', { currency: currencyName });
+
+    // Build balance key: strtolower($currencyId).'Balance' (PHP line 577).
+    const balanceKey = String(currencyId).toLowerCase() + 'Balance';
+    const rawBalance = parseFloat(resp[balanceKey] ?? 0) || 0;
+
+    return {
+      ErrorCode:        0,
+      OperationMessage: 'Command completed succesfully.',
+      OperationResult:  'SUCCESS',
+      Balance:          rawBalance.toFixed(2),
+      CurrencyId:       mapped.id,
+      CurrencyInfo:     null,
+      CurrencyName:     mapped.name,
+      CurrencySymbol:   mapped.symbol,
+    };
+  } catch (err) {
+    // Error envelope preserves the same shape — OperationResult signals failure.
+    // PHP line 593: formatErrorCode($e->getCode()) ?: 'BALANCE'
+    return {
+      ErrorCode:        formatErrorCode(err.statusCode) || 'BALANCE',
+      OperationMessage: err.message,
+      OperationResult:  'FAILED',
+      Balance:          '0.00',
+      CurrencyId:       mapped.id,
+      CurrencyInfo:     null,
+      CurrencyName:     mapped.name,
+      CurrencySymbol:   mapped.symbol,
+    };
   }
 };
 
