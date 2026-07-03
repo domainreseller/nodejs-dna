@@ -789,6 +789,141 @@ DNARest.prototype.RejectTransfer = async function RejectTransfer(domainName) {
 };
 
 // ---------------------------------------------------------------------------
+// Task 9: Lifecycle group — Renew, ModifyPrivacyProtectionStatus, SaveContacts
+// PHP source: DNARest.php lines 1224–1251 (#16), 1541–1565 (#18), 1074–1101 (#11)
+// ---------------------------------------------------------------------------
+
+/**
+ * Renew a domain registration.
+ * POST domains/renew
+ * PHP lines 1224–1251.
+ *
+ * If the response contains a truthy expirationDate, return success with
+ * ExpirationDate formatted via formatApiDate. If expirationDate is falsy,
+ * return the DOMAIN_RENEW error (mirrors PHP line 1237–1242 else-branch).
+ *
+ * @param {string} domainName
+ * @param {number} period  Renewal period in years
+ */
+DNARest.prototype.Renew = async function Renew(domainName, period) {
+  try {
+    const response = await this.request('POST', 'domains/renew', { domainName, period });
+
+    if (response && response.expirationDate) {
+      return {
+        result: RESULT_OK,
+        data: { ExpirationDate: formatApiDate(response.expirationDate) },
+      };
+    }
+
+    // Falsy expirationDate — mirrors PHP line 1237–1242
+    return setError('DOMAIN_RENEW');
+  } catch (err) {
+    return setError(
+      err.statusCode || 'RENEW_DOMAIN',
+      err.message,
+      (this.lastParsedResponse && this.lastParsedResponse.Details) ||
+        (this.lastResponse && this.lastResponse.raw_response) ||
+        err.message,
+    );
+  }
+};
+
+/**
+ * Modify privacy protection status for a domain.
+ * POST domains/privacy
+ * PHP lines 1541–1565.
+ *
+ * $reason is accepted but NOT sent to the API (ignored — matches PHP).
+ * PrivacyProtectionStatus in the success response is the INPUT $status,
+ * not the API response value (mirrors PHP line 1554).
+ * privacyStatus in the payload uses strict boolean coercion (PHP: $status===true).
+ *
+ * @param {string}  domainName
+ * @param {boolean} status
+ * @param {string}  [reason='Owner request']  Accepted but ignored
+ */
+DNARest.prototype.ModifyPrivacyProtectionStatus = async function ModifyPrivacyProtectionStatus(
+  domainName, status, reason = 'Owner request',
+) {
+  // reason accepted but not sent (PHP line 1544–1547: only used as default-fill,
+  // never forwarded to the API payload).
+  void reason;
+  try {
+    const payload = { domainName, privacyStatus: Boolean(status) };
+    await this.request('POST', 'domains/privacy', payload);
+
+    return {
+      result: RESULT_OK,
+      data: { PrivacyProtectionStatus: status },
+    };
+  } catch (err) {
+    return setError(
+      err.statusCode || 'MODIFY_PRIVACY',
+      err.message,
+      (this.lastParsedResponse && this.lastParsedResponse.Details) ||
+        (this.lastResponse && this.lastResponse.raw_response) ||
+        err.message,
+    );
+  }
+};
+
+/**
+ * Update contacts for a domain.
+ * PUT domains/contacts/update
+ * PHP lines 1074–1101.
+ *
+ * Input contacts must be in associative-object form: { Administrative: {...}, ... }.
+ * Each entry is mapped via parseContact(details, ucfirst(strtolower(type))) before
+ * sending (PHP line 1079).
+ * Response contacts (array) are keyed by ucfirst(strtolower(contact.type)) and
+ * each parsed via parseContactInfo (PHP line 1086).
+ *
+ * @param {string} domainName
+ * @param {Object} contacts  Associative: { Administrative: {...}, Technical: {...}, ... }
+ */
+DNARest.prototype.SaveContacts = async function SaveContacts(domainName, contacts) {
+  try {
+    // Map input contacts: { Type: details } → REST array via parseContact
+    const payloadContacts = [];
+    for (const [type, details] of Object.entries(contacts)) {
+      // PHP: ucfirst(strtolower($type)) — lowercase all then uppercase first char
+      const normalized = type.charAt(0).toUpperCase() + type.slice(1).toLowerCase();
+      payloadContacts.push(parseContact(details, normalized));
+    }
+
+    const response = await this.request('PUT', 'domains/contacts/update', {
+      domainName,
+      contacts: payloadContacts,
+    });
+
+    // Map response contacts array → keyed object via parseContactInfo
+    const parsedContacts = {};
+    if (response && Array.isArray(response.contacts)) {
+      for (const contact of response.contacts) {
+        // PHP: ucfirst(strtolower($contact['type']))
+        const rawType = String(contact.type || contact.contactType || '');
+        const typeKey = rawType.charAt(0).toUpperCase() + rawType.slice(1).toLowerCase();
+        parsedContacts[typeKey] = parseContactInfo(contact);
+      }
+    }
+
+    return {
+      result: RESULT_OK,
+      data: { contacts: parsedContacts },
+    };
+  } catch (err) {
+    return setError(
+      err.statusCode || 'SAVE_CONTACTS',
+      err.message,
+      (this.lastParsedResponse && this.lastParsedResponse.Details) ||
+        (this.lastResponse && this.lastResponse.raw_response) ||
+        err.message,
+    );
+  }
+};
+
+// ---------------------------------------------------------------------------
 
 // Install skeletons that throw until the method-specific task fills them in.
 // The loop only writes to names NOT already defined on the prototype, so the
