@@ -122,6 +122,90 @@ const DEFAULT_ERRORS = {
   },
 };
 
+// ---------------------------------------------------------------------------
+// isTrTLD — ported from DNARest.php lines 1783–1786 (REST version, simpler).
+// SOAP version (lines 1859–1864) is equivalent: preg_match('/\.tr$/', domain).
+// ---------------------------------------------------------------------------
+function isTrTLD(domain) {
+  return String(domain).toLowerCase().endsWith('.tr');
+}
+
+// ---------------------------------------------------------------------------
+// validateContact — ported verbatim from DNASoap.php lines 1785–1850 /
+// DNARest.php lines 1844–1909 (code is byte-for-byte identical in both).
+// Fills missing / empty fields with Turkish-locale defaults and normalises
+// the phone number. Returns the mutated contact object — never errors.
+// ---------------------------------------------------------------------------
+const VALIDATE_CONTACT_DEFAULTS = {
+  FirstName:        'Isimyok',
+  LastName:         'Isimyok',
+  AddressLine1:     'Addres yok',
+  City:             'ISTANBUL',
+  Country:          'TR',
+  ZipCode:          '34000',
+  Phone:            '5555555555',
+  PhoneCountryCode: '90',
+};
+
+function validateContact(contact) {
+  const defaults = VALIDATE_CONTACT_DEFAULTS;
+
+  // Fill missing keys with default values
+  for (const [key, value] of Object.entries(defaults)) {
+    if (contact[key] == null) {
+      contact[key] = value;
+    }
+  }
+
+  // Check empty values and fill with defaults
+  if (String(contact.FirstName).trim().length === 0) {
+    contact.FirstName = defaults.FirstName;
+  }
+  if (String(contact.LastName).trim().length === 0) {
+    contact.LastName = contact.FirstName;
+  }
+  if (String(contact.AddressLine1).trim().length === 0) {
+    contact.AddressLine1 = defaults.AddressLine1;
+  }
+  if (String(contact.City).trim().length === 0) {
+    contact.City = defaults.City;
+  }
+  if (String(contact.Country).trim().length === 0) {
+    contact.Country = defaults.Country;
+  }
+  if (String(contact.ZipCode).trim().length === 0) {
+    contact.ZipCode = defaults.ZipCode;
+  }
+
+  // Phone number processing — strip non-digits, then split country code
+  const tmpPhone = contact.Phone != null
+    ? String(contact.Phone).replace(/[^0-9]/g, '')
+    : '';
+
+  if (tmpPhone.length === 10) {
+    contact.PhoneCountryCode = '';
+    contact.Phone = tmpPhone;
+  } else if (tmpPhone.length === 11 && tmpPhone.charAt(0) === '9') {
+    contact.PhoneCountryCode = tmpPhone.substring(0, 2);
+    contact.Phone = tmpPhone.substring(2);
+  } else if (tmpPhone.length === 12 && tmpPhone.substring(0, 2) === '90') {
+    contact.PhoneCountryCode = tmpPhone.substring(0, 2);
+    contact.Phone = tmpPhone.substring(2);
+  } else {
+    contact.PhoneCountryCode = defaults.PhoneCountryCode;
+    contact.Phone = tmpPhone || defaults.Phone;
+  }
+
+  if (String(contact.PhoneCountryCode).trim().length === 0) {
+    contact.PhoneCountryCode = defaults.PhoneCountryCode;
+  }
+  if (String(contact.Phone).trim().length === 0) {
+    contact.Phone = defaults.Phone;
+  }
+
+  return contact;
+}
+
 function formatErrorCode(code) {
   return typeof code === 'number' || /^\d+$/.test(String(code)) ? `API_${code}` : String(code);
 }
@@ -140,4 +224,5 @@ module.exports = {
   DEFAULT_TIMEOUT, DEFAULT_NAMESERVERS, DEFAULT_REASON,
   DOMAIN_STATUS_MAP, DEFAULT_ERRORS,
   formatErrorCode, setError,
+  isTrTLD, validateContact, VALIDATE_CONTACT_DEFAULTS,
 };
