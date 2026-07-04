@@ -1,5 +1,6 @@
 const soap = require('strong-soap').soap;
-const { SOAP_URL, VERSION, BUSINESS_METHODS, validateContact, isTrTLD } = require('./shared');
+const { SOAP_URL, VERSION, BUSINESS_METHODS, validateContact, isTrTLD, setError, RESULT_OK } = require('./shared');
+const { parseSoapDomainInfo, parseSoapContactInfo } = require('./soap-normalize');
 
 class DNASoap {
   static VERSION = VERSION;
@@ -116,46 +117,41 @@ async ModifyChildNameServer(domainName, nameServer, ipAddress) {
 
 /**
  * Get Contacts for domain, Administrative, Billing, Technical, Registrant
- * segments will be returned
+ * segments will be returned.
+ * PHP: DNASoap.php lines 791–833 (#10)
  * @param {string} domainName
  * @return {Promise<Object>}
  */
 async GetContacts(domainName) {
     const parameters = {
         request: {
-            Password: this.servicePassword,
-            UserName: this.serviceUsername,
-            DomainName: domainName
-        }
+            Password : this.servicePassword,
+            UserName : this.serviceUsername,
+            DomainName: domainName,
+        },
     };
 
+    // callApiFunction already unwraps GetContactsResult; response IS the payload.
     return this.callApiFunction('GetContacts', parameters).then((response) => {
-        const data = response[Object.keys(response)[0]];
-
-        let result = {};
-
-        // Eğer ContactInfo geçerli bir nesne ise
-        if (data.AdministrativeContact && typeof data.AdministrativeContact === 'object' &&
-            data.TechnicalContact && typeof data.TechnicalContact === 'object' &&
-            data.RegistrantContact && typeof data.RegistrantContact === 'object' &&
-            data.BillingContact && typeof data.BillingContact === 'object') {
-
-            result = {
-                data: {
+        if (
+            response.AdministrativeContact && typeof response.AdministrativeContact === 'object' &&
+            response.TechnicalContact      && typeof response.TechnicalContact      === 'object' &&
+            response.RegistrantContact     && typeof response.RegistrantContact     === 'object' &&
+            response.BillingContact        && typeof response.BillingContact        === 'object'
+        ) {
+            return {
+                result: RESULT_OK,
+                data  : {
                     contacts: {
-                        Administrative: this.parseContactInfo(data.AdministrativeContact),
-                        Billing: this.parseContactInfo(data.BillingContact),
-                        Registrant: this.parseContactInfo(data.RegistrantContact),
-                        Technical: this.parseContactInfo(data.TechnicalContact),
-                    }
+                        Administrative: parseSoapContactInfo(response.AdministrativeContact),
+                        Billing       : parseSoapContactInfo(response.BillingContact),
+                        Registrant    : parseSoapContactInfo(response.RegistrantContact),
+                        Technical     : parseSoapContactInfo(response.TechnicalContact),
+                    },
                 },
-                result: true
             };
-        } else {
-            result = data;
         }
-
-        return result;
+        return setError('CONTACT_INFO', response.message || '', '');
     });
 }
 
@@ -456,37 +452,25 @@ async ModifyPrivacyProtectionStatus(domainName, status, reason = "Owner request"
 
 
 /**
- * Sync from registry, domain information will be updated from registry
+ * Sync from registry — domain information will be updated from registry.
+ * PHP: DNASoap.php lines 1232–1261 (#19)
  * @param {string} domainName
  * @return {Promise<Object>}
  */
 async SyncFromRegistry(domainName) {
     const parameters = {
         request: {
-            Password: this.servicePassword,
-            UserName: this.serviceUsername,
-            DomainName: domainName
-        }
+            Password  : this.servicePassword,
+            UserName  : this.serviceUsername,
+            DomainName: domainName,
+        },
     };
 
-    // API çağrısı ve yanıt işleme
     return this.callApiFunction('SyncFromRegistry', parameters).then((response) => {
-        const data = response;
-
-        let result = {};
-
-        // Eğer DomainInfo geçerli bir nesne ise
-        if (data.DomainInfo && typeof data.DomainInfo === 'object') {
-            result = {
-                data: this.parseDomainInfo(data.DomainInfo),
-                result: true
-            };
-        } else {
-            // Hata durumu
-            result = data;
+        if (response.DomainInfo && typeof response.DomainInfo === 'object') {
+            return parseSoapDomainInfo(response.DomainInfo);
         }
-
-        return result;
+        return setError('DOMAIN_SYNC', response.message || '', '');
     });
 }
 
@@ -494,7 +478,10 @@ async SyncFromRegistry(domainName) {
 
 
 /**
- * Get Current primary Balance for your account
+ * Get current primary balance for the account.
+ * PHP: DNASoap.php lines 335–366 (#2)
+ * Returns the raw SOAP GetCurrentBalanceResult fields — same flat shape as
+ * REST GetCurrentBalance (transport-transparent, no {result:'OK',data:{}} wrapper).
  * @param {string|number} currencyId
  * @return {Promise<Object>}
  */
@@ -509,14 +496,26 @@ async GetCurrentBalance(currencyId = 2) {
 
     const parameters = {
         request: {
-            Password: this.servicePassword,
-            UserName: this.serviceUsername,
-            CurrencyId: currencyId
-        }
+            Password  : this.servicePassword,
+            UserName  : this.serviceUsername,
+            CurrencyId: currencyId,
+        },
     };
 
     return this.callApiFunction('GetCurrentBalance', parameters).then((response) => {
-        return response;
+        // PHP returns $response['GetCurrentBalanceResult'] directly (pass-through).
+        // callApiFunction already extracts that key; strip its added 'result' boolean
+        // and return only the SOAP-native fields, matching REST's flat envelope.
+        return {
+            ErrorCode       : response.ErrorCode        != null ? response.ErrorCode        : 0,
+            OperationMessage: response.OperationMessage != null ? response.OperationMessage : '',
+            OperationResult : response.OperationResult  != null ? response.OperationResult  : '',
+            Balance         : response.Balance          != null ? response.Balance          : '0.00',
+            CurrencyId      : response.CurrencyId       != null ? response.CurrencyId       : currencyId,
+            CurrencyInfo    : response.CurrencyInfo     != null ? response.CurrencyInfo     : null,
+            CurrencyName    : response.CurrencyName     != null ? response.CurrencyName     : '',
+            CurrencySymbol  : response.CurrencySymbol   != null ? response.CurrencySymbol   : '',
+        };
     });
 }
 
@@ -673,9 +672,10 @@ async GetList(extraParameters = {}) {
 }
 
   /**
-   * Get Domain details
+   * Get Domain details.
+   * PHP: DNASoap.php lines 560–589 (#6)
    * @param {string} domainName
-   * @return {Promise<Object>}
+   * @return {Promise<Object>} {result:'OK', data:{...}} | {result:'ERROR', error:{...}}
    */
   async GetDetails(domainName) {
     const parameters = {
@@ -687,29 +687,20 @@ async GetList(extraParameters = {}) {
     };
 
     return this.callApiFunction('GetDetails', parameters).then((response) => {
-      const data = response;
-      let result = {};
-
-      if (data.DomainInfo && typeof data.DomainInfo === 'object') {
-        result.data = this.parseDomainInfo(data.DomainInfo);
-        result.result = true;
+      if (response.DomainInfo && typeof response.DomainInfo === 'object') {
+        return parseSoapDomainInfo(response.DomainInfo);
       }
-      else {
-        result = data;
-      }
-
-      return result;
+      return setError('DOMAIN_DETAILS', response.message || '', '');
     });
   }
 
   /**
-   * Get Reseller Details
-   * @returns {Promise<{result: boolean, name: (string|string|*), active:
-   *     boolean, id: (string|*)}>}
-   * @constructor
+   * Get Reseller Details.
+   * PHP: DNASoap.php lines 278–326 (#1)
+   * Returns FLAT top-level keys (no data wrapper) — matches REST GetResellerDetails.
+   * @returns {Promise<Object>}
    */
   async GetResellerDetails() {
-
     const parameters = {
       request: {
         UserName  : this.serviceUsername,
@@ -718,44 +709,38 @@ async GetList(extraParameters = {}) {
       },
     };
 
-    return this.callApiFunction('GetResellerDetails', parameters).
-        then((data) => {
-          if (data && data.ResellerInfo) {
-            let resp = {
-              result: true,
-              id    : data.ResellerInfo.Id,
-              active: data.ResellerInfo.Status === 'Active',
-              name  : data.ResellerInfo.Name,
-            };
+    return this.callApiFunction('GetResellerDetails', parameters).then((data) => {
+      if (data && data.ResellerInfo) {
+        const resp = {
+          result: RESULT_OK,
+          id    : data.ResellerInfo.Id,
+          active: data.ResellerInfo.Status === 'Active',
+          name  : data.ResellerInfo.Name,
+        };
 
-            let activeCurrency = data.ResellerInfo.BalanceInfoList.BalanceInfo[0];
-            let balances = [];
+        let activeCurrency = data.ResellerInfo.BalanceInfoList.BalanceInfo[0];
+        const balances = [];
 
-            data.ResellerInfo.BalanceInfoList.BalanceInfo.forEach((v) => {
-              if (v.CurrencyName === data.ResellerInfo.CurrencyInfo.Code) {
-                activeCurrency = v;
-              }
-
-              balances.push({
-                balance : v.Balance,
-                currency: v.CurrencyName,
-                symbol  : v.CurrencySymbol,
-              });
-            });
-
-            resp.balance = activeCurrency.Balance;
-            resp.currency = activeCurrency.CurrencyName;
-            resp.symbol = activeCurrency.CurrencySymbol;
-            resp.balances = balances;
-
-            // Şu noktada resp objesi işleme alınabilir
-            return resp;
+        data.ResellerInfo.BalanceInfoList.BalanceInfo.forEach((v) => {
+          if (v.CurrencyName === data.ResellerInfo.CurrencyInfo.Code) {
+            activeCurrency = v;
           }
-          else {
-            return {result: false, ...data};
-          }
-
+          balances.push({
+            balance : v.Balance,
+            currency: v.CurrencyName,
+            symbol  : v.CurrencySymbol,
+          });
         });
+
+        resp.balance  = activeCurrency.Balance;
+        resp.currency = activeCurrency.CurrencyName;
+        resp.symbol   = activeCurrency.CurrencySymbol;
+        resp.balances = balances;
+
+        return resp;
+      }
+      return setError('CREDENTIALS', data.message || '', '');
+    });
   }
 
 
