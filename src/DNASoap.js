@@ -214,130 +214,164 @@ async GetContacts(domainName) {
 
 
 /**
- * Transfer domain with EPP code and period
+ * Transfer domain with EPP code and period.
+ * PHP: DNASoap.php lines 891–932 (#12)
+ * SOAP operation: transfer
+ *
  * @param {string} domainName
- * @param {string} eppCode
- * @param {string} period
- * @return {Promise<Object>}
+ * @param {string} eppCode    EPP/auth code for the transfer
+ * @param {number} period     Transfer period in years
+ * @returns {Promise<{result:'OK', data:{...parseSoapDomainInfo}}>}
  */
 async Transfer(domainName, eppCode, period) {
-    const parameters = {
-        request: {
-            Password: this.servicePassword,
-            UserName: this.serviceUsername,
-            DomainName: domainName,
-            AuthCode: eppCode,
-            AdditionalAttributes: {
-                KeyValueOfstringstring: [
-                    {
-                        Key: 'TRANSFERPERIOD',
-                        Value: period
-                    }
-                ]
-            }
-        }
-    };
+  const parameters = {
+    request: {
+      Password             : this.servicePassword,
+      UserName             : this.serviceUsername,
+      DomainName           : domainName,
+      AuthCode             : eppCode,
+      AdditionalAttributes : {
+        KeyValueOfstringstring: [
+          { Key: 'TRANSFERPERIOD', Value: period },
+        ],
+      },
+    },
+  };
 
-    return this.callApiFunction('Transfer', parameters).then((response) => {
-        const data = response[Object.keys(response)[0]];
-        let result = {};
-
-        // Eğer DomainInfo geçerli bir nesne ise
-        if (data.DomainInfo && typeof data.DomainInfo === 'object') {
-            // Domain bilgisini ayrıştır ve döndür
-            result = {
-                result: true,
-                data: this.parseDomainInfo(data.DomainInfo)
-            };
-        } else {
-            // Hata durumunu ayarla
-            result = data;
-        }
-
-        return result;
-    });
+  return this.callApiFunction('Transfer', parameters).then((response) => {
+    // callApiFunction already unwraps TransferResult and sets result:bool.
+    // Do NOT re-unwrap with response[Object.keys(response)[0]].
+    if (!response.result) {
+      return setError(
+        response.ErrorCode || 'DOMAIN_TRANSFER_REQUEST',
+        response.message   || '',
+        '',
+      );
+    }
+    if (response.DomainInfo && typeof response.DomainInfo === 'object') {
+      return parseSoapDomainInfo(response.DomainInfo);
+    }
+    // DomainInfo absent on a nominal success → structural error.
+    return setError('DOMAIN_TRANSFER_REQUEST');
+  });
 }
 
 
 /**
- * Stops Incoming Transfer
+ * Cancel a pending incoming transfer.
+ * PHP: DNASoap.php lines 942–963 (#13)
+ * SOAP operation: cancelTransfer
+ *
+ * Success envelope matches REST CancelTransfer:
+ *   { result:'OK', data:{ DomainName, Status: <resp.Status> ?? 'Cancelled' } }
+ *
  * @param {string} domainName
- * @return {Promise<Object>}
+ * @returns {Promise<{result:'OK', data:{DomainName:string, Status:string}}>}
  */
 async CancelTransfer(domainName) {
-    const parameters = {
-        request: {
-            Password: this.servicePassword,
-            UserName: this.serviceUsername,
-            DomainName: domainName
-        }
+  const parameters = {
+    request: {
+      Password  : this.servicePassword,
+      UserName  : this.serviceUsername,
+      DomainName: domainName,
+    },
+  };
+
+  return this.callApiFunction('CancelTransfer', parameters).then((response) => {
+    if (!response.result) {
+      return setError(
+        response.ErrorCode || 'CANCEL_TRANSFER',
+        response.message   || '',
+        '',
+      );
+    }
+    return {
+      result: RESULT_OK,
+      data  : {
+        DomainName: domainName,
+        Status    : response.Status != null ? response.Status : 'Cancelled',
+      },
     };
-
-    return this.callApiFunction('CancelTransfer', parameters).then((response) => {
-        const data = response[Object.keys(response)[0]];
-
-        return {
-            result: data.result ,
-            data: {
-                DomainName: parameters.request.DomainName
-            }
-        };
-    });
+  });
 }
 
 
 
 /**
- * Approve Outgoing transfer
+ * Approve a pending outgoing transfer.
+ * PHP: DNASoap.php lines 973–994 (#14)
+ * SOAP operation: approveTransfer
+ *
+ * Success envelope matches REST ApproveTransfer:
+ *   { result:'OK', data:{ DomainName, Status: <resp.Status> ?? 'Approved' } }
+ *
  * @param {string} domainName
- * @return {Promise<Object>}
+ * @returns {Promise<{result:'OK', data:{DomainName:string, Status:string}}>}
  */
 async ApproveTransfer(domainName) {
-    const parameters = {
-        request: {
-            Password: this.servicePassword,
-            UserName: this.serviceUsername,
-            DomainName: domainName
-        }
+  const parameters = {
+    request: {
+      Password  : this.servicePassword,
+      UserName  : this.serviceUsername,
+      DomainName: domainName,
+    },
+  };
+
+  return this.callApiFunction('ApproveTransfer', parameters).then((response) => {
+    if (!response.result) {
+      return setError(
+        response.ErrorCode || 'APPROVE_TRANSFER',
+        response.message   || '',
+        '',
+      );
+    }
+    return {
+      result: RESULT_OK,
+      data  : {
+        DomainName: domainName,
+        Status    : response.Status != null ? response.Status : 'Approved',
+      },
     };
-
-    return this.callApiFunction('ApproveTransfer', parameters).then((response) => {
-        const data = response[Object.keys(response)[0]];
-
-        return {
-            result: data.result,
-            data: {
-                DomainName: parameters.request.DomainName
-            }
-        };
-    });
+  });
 }
 
 
 /**
- * Reject Outgoing transfer
+ * Reject a pending outgoing transfer.
+ * PHP: DNASoap.php lines 1003–1024 (#15)
+ * SOAP operation: rejectTransfer
+ *
+ * Success envelope matches REST RejectTransfer:
+ *   { result:'OK', data:{ DomainName, Status: <resp.Status> ?? 'Rejected' } }
+ *
  * @param {string} domainName
- * @return {Promise<Object>}
+ * @returns {Promise<{result:'OK', data:{DomainName:string, Status:string}}>}
  */
 async RejectTransfer(domainName) {
-    const parameters = {
-        request: {
-            Password: this.servicePassword,
-            UserName: this.serviceUsername,
-            DomainName: domainName
-        }
+  const parameters = {
+    request: {
+      Password  : this.servicePassword,
+      UserName  : this.serviceUsername,
+      DomainName: domainName,
+    },
+  };
+
+  return this.callApiFunction('RejectTransfer', parameters).then((response) => {
+    if (!response.result) {
+      return setError(
+        response.ErrorCode || 'REJECT_TRANSFER',
+        response.message   || '',
+        '',
+      );
+    }
+    return {
+      result: RESULT_OK,
+      data  : {
+        DomainName: domainName,
+        Status    : response.Status != null ? response.Status : 'Rejected',
+      },
     };
-
-    return this.callApiFunction('RejectTransfer', parameters).then((response) => {
-        const data = response[Object.keys(response)[0]];
-
-        return {
-            result: data.result,
-            data: {
-                DomainName: parameters.request.DomainName
-            }
-        };
-    });
+  });
 }
 
   /**
