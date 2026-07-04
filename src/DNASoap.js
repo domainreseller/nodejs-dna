@@ -727,8 +727,8 @@ async CheckAvailability(domains, extensions, period = 1, command = 'create') {
       const rawPrice = item.Price != null ? parseFloat(item.Price) : null;
 
       available.push({
-        TLD      : item.Tld      != null ? item.Tld      : '',
-        DomainName: item.DomainName != null ? item.DomainName : '',
+        TLD      : item.Tld      != null ? String(item.Tld).toLowerCase()      : '',
+        DomainName: item.DomainName != null ? String(item.DomainName).toLowerCase() : '',
         Status   : isAvailable ? 'available' : 'notavailable',
         Command  : item.Command  != null ? item.Command  : command,
         Period   : item.Period   != null ? item.Period   : period,
@@ -1048,91 +1048,6 @@ async GetTldList(count = 20) {
     });
   }
 
-
-
-
-  /**
-   * Parse domain information
-   * @param {Object} data
-   * @return {Object}
-   */
-  parseDomainInfo(data) {
-      const result = {
-          ID: data.Id || "",
-          Status: data.Status || "",
-          DomainName: data.DomainName || "",
-          AuthCode: data.Auth || "",
-          LockStatus: typeof data.LockStatus === "boolean" ? data.LockStatus.toString() : "",
-          PrivacyProtectionStatus: typeof data.PrivacyProtectionStatus === "boolean" ? data.PrivacyProtectionStatus.toString() : "",
-          IsChildNameServer: typeof data.IsChildNameServer === "boolean" ? data.IsChildNameServer.toString() : "",
-          Contacts: {
-              Administrative: { ID: data.AdministrativeContactId || "" },
-              Billing: { ID: data.BillingContactId || "" },
-              Technical: { ID: data.TechnicalContactId || "" },
-              Registrant: { ID: data.RegistrantContactId || "" }
-          },
-          Dates: {
-              Start: data.StartDate || "",
-              Expiration: data.ExpirationDate || "",
-              RemainingDays: data.RemainingDay || ""
-          },
-          NameServers: data.NameServerList ? (Array.isArray(data.NameServerList) ? data.NameServerList : [data.NameServerList]) : [],
-          Additional: (data.AdditionalAttributes && data.AdditionalAttributes.KeyValueOfstringstring) ?
-              (Array.isArray(data.AdditionalAttributes.KeyValueOfstringstring) ?
-                  data.AdditionalAttributes.KeyValueOfstringstring.reduce((acc, attr) => {
-                      if (attr.Key && attr.Value) acc[attr.Key] = attr.Value;
-                      return acc;
-                  }, {}) :
-                  { [data.AdditionalAttributes.KeyValueOfstringstring.Key]: data.AdditionalAttributes.KeyValueOfstringstring.Value }) : {},
-          ChildNameServers: data.ChildNameServerInfo ?
-              (Array.isArray(data.ChildNameServerInfo) ?
-                  data.ChildNameServerInfo.map(server => ({
-                      ns: server.ChildNameServer || "",
-                      ip: Array.isArray(server.IpAddress?.string) ? server.IpAddress.string : [server.IpAddress?.string || ""]
-                  })) :
-                  [{
-                      ns: data.ChildNameServerInfo.ChildNameServer || "",
-                      ip: Array.isArray(data.ChildNameServerInfo.IpAddress?.string) ? data.ChildNameServerInfo.IpAddress.string : [data.ChildNameServerInfo.IpAddress?.string || ""]
-                  }]) : []
-      };
-
-      return result;
-  }
-
-  /**
-   * Parse contact information
-   * @param {Object} data
-   * @return {Object}
-   */
-  parseContactInfo(data) {
-    return {
-      ID       : data.Id || '',
-      Status   : data.Status || '',
-      Address  : {
-        Line1  : data.AddressLine1 || '',
-        Line2  : data.AddressLine2 || '',
-        Line3  : data.AddressLine3 || '',
-        State  : data.State || '',
-        City   : data.City || '',
-        Country: data.Country || '',
-        ZipCode: data.ZipCode || '',
-      },
-      Phone    : {
-        Number     : data.Phone || '',
-        CountryCode: data.PhoneCountryCode || '',
-      },
-      Fax      : {
-        Number     : data.Fax || '',
-        CountryCode: data.FaxCountryCode || '',
-      },
-      AuthCode : data.Auth || '',
-      FirstName: data.FirstName || '',
-      LastName : data.LastName || '',
-      Company  : data.Company || '',
-      EMail    : data.EMail || '',
-      Type     : data.Type || '',
-    };
-  }
 
   async callApiFunction(apiFunctionName, parameters) {
     try {

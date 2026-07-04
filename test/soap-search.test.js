@@ -255,6 +255,25 @@ test('CheckAvailability: missing DomainAvailabilityInfoList returns error envelo
   assert.ok(result.error && result.error.Code);
 });
 
+test('CheckAvailability: mixed-case Tld and DomainName are lowercased (REST parity)', async () => {
+  const c = makeClient({
+    DomainAvailabilityInfoList: {
+      DomainAvailabilityInfo: [
+        {
+          Tld: 'COM', DomainName: 'Example.COM', Status: 'available',
+          Command: 'create', Period: 1, IsFee: false, Price: null,
+          Currency: null, Reason: null,
+        },
+      ],
+    },
+    OperationResult: 'SUCCESS',
+    result: true,
+  });
+  const result = await c.CheckAvailability(['Example.COM'], ['COM'], 1);
+  assert.strictEqual(result[0].TLD, 'com',            'TLD must be lowercased');
+  assert.strictEqual(result[0].DomainName, 'example.com', 'DomainName must be lowercased');
+});
+
 // ===========================================================================
 // GetList
 // ===========================================================================
