@@ -506,6 +506,23 @@ async GetCurrentBalance(currencyId = 2) {
         // PHP returns $response['GetCurrentBalanceResult'] directly (pass-through).
         // callApiFunction already extracts that key; strip its added 'result' boolean
         // and return only the SOAP-native fields, matching REST's flat envelope.
+
+        // Fatal / error path: callApiFunction sets result:false when no SOAP data is
+        // available (level:'fatal'). Mirror REST GetCurrentBalance's catch block which
+        // returns OperationResult:'FAILED' — not an empty string.
+        if (response.result === false || response.level === 'fatal') {
+            return {
+                ErrorCode       : response.ErrorCode != null ? response.ErrorCode : 'BALANCE',
+                OperationMessage: response.message   != null ? response.message   : '',
+                OperationResult : 'FAILED',
+                Balance         : '0.00',
+                CurrencyId      : currencyId,
+                CurrencyInfo    : null,
+                CurrencyName    : '',
+                CurrencySymbol  : '',
+            };
+        }
+
         return {
             ErrorCode       : response.ErrorCode        != null ? response.ErrorCode        : 0,
             OperationMessage: response.OperationMessage != null ? response.OperationMessage : '',
@@ -718,11 +735,21 @@ async GetList(extraParameters = {}) {
           name  : data.ResellerInfo.Name,
         };
 
-        let activeCurrency = data.ResellerInfo.BalanceInfoList.BalanceInfo[0];
+        // Guard: BalanceInfoList or BalanceInfo may be absent / empty.
+        const balanceList = Array.isArray(
+          data.ResellerInfo.BalanceInfoList && data.ResellerInfo.BalanceInfoList.BalanceInfo,
+        )
+          ? data.ResellerInfo.BalanceInfoList.BalanceInfo
+          : [];
+
+        // Guard: CurrencyInfo may be null — use optional chaining.
+        const activeCurrencyCode = data.ResellerInfo.CurrencyInfo?.Code ?? null;
+
+        let activeCurrency = balanceList[0] ?? null;
         const balances = [];
 
-        data.ResellerInfo.BalanceInfoList.BalanceInfo.forEach((v) => {
-          if (v.CurrencyName === data.ResellerInfo.CurrencyInfo.Code) {
+        for (const v of balanceList) {
+          if (activeCurrencyCode !== null && v.CurrencyName === activeCurrencyCode) {
             activeCurrency = v;
           }
           balances.push({
@@ -730,16 +757,17 @@ async GetList(extraParameters = {}) {
             currency: v.CurrencyName,
             symbol  : v.CurrencySymbol,
           });
-        });
+        }
 
-        resp.balance  = activeCurrency.Balance;
-        resp.currency = activeCurrency.CurrencyName;
-        resp.symbol   = activeCurrency.CurrencySymbol;
+        // If no balance entries at all, produce empty/default fallback values.
+        resp.balance  = activeCurrency != null ? activeCurrency.Balance      : '';
+        resp.currency = activeCurrency != null ? activeCurrency.CurrencyName  : '';
+        resp.symbol   = activeCurrency != null ? activeCurrency.CurrencySymbol : '';
         resp.balances = balances;
 
         return resp;
       }
-      return setError('CREDENTIALS', data.message || '', '');
+      return setError('CREDENTIALS', (data && data.message) || '', '');
     });
   }
 

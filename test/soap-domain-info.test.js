@@ -440,11 +440,75 @@ test('SOAP GetCurrentBalance success → shape keys match REST GetCurrentBalance
   assert.deepStrictEqual(Object.keys(out).sort(), REST_KEYS);
 });
 
-test('SOAP GetCurrentBalance fatal failure → returns flat shape with empty/null fields', async () => {
+test('SOAP GetCurrentBalance fatal failure → OperationResult is FAILED (transport parity with REST)', async () => {
   const c = makeSoap(CANNED.BALANCE_FAIL);
   const out = await c.GetCurrentBalance(2);
-  // On fatal failure (no SOAP data), the flat shape is preserved with fallbacks
+  // On fatal failure the flat shape is preserved with fallbacks matching REST's catch block
   assert.ok('ErrorCode' in out);
-  assert.ok('OperationResult' in out);
+  assert.strictEqual(out.OperationResult, 'FAILED');
   assert.ok('Balance' in out);
+});
+
+// ===========================================================================
+// GetResellerDetails — crash-guard edge cases
+// ===========================================================================
+
+test('SOAP GetResellerDetails empty BalanceInfo → does not throw, returns value', async () => {
+  const c = new DNASoap('u', 'p');
+  // BalanceInfo is an empty array — formerly crashed with TypeError on [0].Balance
+  c.callApiFunction = async () => ({
+    ResellerInfo: {
+      Id          : 1,
+      Status      : 'Active',
+      Name        : 'Empty Reseller',
+      CurrencyInfo: { Code: 'USD' },
+      BalanceInfoList: { BalanceInfo: [] },
+    },
+  });
+  let out;
+  await assert.doesNotReject(async () => { out = await c.GetResellerDetails(); });
+  assert.ok(out !== undefined, 'Must return a value');
+  // Graceful shape: result:'OK' with empty balance fallbacks
+  assert.strictEqual(out.result, 'OK');
+  assert.strictEqual(out.balance, '');
+  assert.deepStrictEqual(out.balances, []);
+});
+
+test('SOAP GetResellerDetails null CurrencyInfo → does not throw, returns value', async () => {
+  const c = new DNASoap('u', 'p');
+  // CurrencyInfo is null — formerly crashed with TypeError on null.Code
+  c.callApiFunction = async () => ({
+    ResellerInfo: {
+      Id          : 2,
+      Status      : 'Active',
+      Name        : 'Null Currency Reseller',
+      CurrencyInfo: null,
+      BalanceInfoList: {
+        BalanceInfo: [
+          { Balance: '50.00', CurrencyName: 'USD', CurrencySymbol: '$' },
+        ],
+      },
+    },
+  });
+  let out;
+  await assert.doesNotReject(async () => { out = await c.GetResellerDetails(); });
+  assert.ok(out !== undefined, 'Must return a value');
+  // Without CurrencyInfo.Code to match, activeCurrency falls back to BalanceInfo[0]
+  assert.strictEqual(out.result, 'OK');
+  assert.strictEqual(out.balance, '50.00');
+});
+
+// ===========================================================================
+// GetContacts — Phone nesting transport-parity
+// ===========================================================================
+
+test('SOAP GetContacts success → contacts.Administrative.Phone.Phone.Number exists (nested parity)', async () => {
+  const c = makeSoap(CANNED.CONTACTS_OK);
+  const { contacts } = (await c.GetContacts('example.com')).data;
+  assert.ok(
+    contacts.Administrative.Phone != null &&
+    contacts.Administrative.Phone.Phone != null &&
+    typeof contacts.Administrative.Phone.Phone.Number === 'string',
+    'contacts.Administrative.Phone.Phone.Number must be a string',
+  );
 });
