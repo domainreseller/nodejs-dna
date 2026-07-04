@@ -1,5 +1,5 @@
 const soap = require('strong-soap').soap;
-const { SOAP_URL, VERSION, BUSINESS_METHODS, validateContact, isTrTLD, setError, RESULT_OK } = require('./shared');
+const { SOAP_URL, VERSION, BUSINESS_METHODS, validateContact, isTrTLD, setError, RESULT_OK, DEFAULT_NAMESERVERS } = require('./shared');
 const { parseSoapDomainInfo, parseSoapContactInfo } = require('./soap-normalize');
 const { normalizeDomainStatus, formatApiDate } = require('./rest-normalize');
 
@@ -34,87 +34,107 @@ class DNASoap {
     });
   }
 
+  /**
+   * Add a child nameserver to a domain.
+   * PHP: DNASoap.php lines 692–714 (#7)
+   * SOAP operation: addChildNameServer
+   *
+   * @param {string} domainName
+   * @param {string} nameServer  hostname of the child nameserver
+   * @param {string} ipAddress   IP address for the child nameserver
+   * @returns {Promise<{result:'OK', data:{NameServer, IPAdresses:[string]}}>}
+   */
   async AddChildNameServer(domainName, nameServer, ipAddress) {
     const parameters = {
-        request: {
-            Password: this.servicePassword,
-            UserName: this.serviceUsername,
-            DomainName: domainName,
-            ChildNameServer: nameServer,
-            IpAddressList: [ipAddress]
-        }
+      request: {
+        Password        : this.servicePassword,
+        UserName        : this.serviceUsername,
+        DomainName      : domainName,
+        ChildNameServer : nameServer,
+        IpAddressList   : [ipAddress],
+      },
     };
 
-    // callApiFunction ile API çağrısı yapıyoruz
     return this.callApiFunction('AddChildNameServer', parameters).then((response) => {
-        return {
-            data: {
-                NameServer: parameters.request.ChildNameServer,
-                IPAdresses: parameters.request.IpAddressList
-            },
-            result: true
-        };
+      if (!response.result) {
+        return setError(response.ErrorCode || 'ADD_CHILD_NS', response.message || '', '');
+      }
+      return {
+        result: RESULT_OK,
+        data  : {
+          NameServer: nameServer,
+          IPAdresses: [ipAddress],   // one-'d' typo preserved from PHP source
+        },
+      };
     });
-}
+  }
 
 
-/**
- * Delete Child Name Server for domain
- * @param {string} domainName
- * @param {string} nameServer
- * @return {Promise<Object>}
- */
-async DeleteChildNameServer(domainName, nameServer) {
+  /**
+   * Delete a child nameserver from a domain.
+   * PHP: DNASoap.php lines 725–745 (#8)
+   * SOAP operation: deleteChildNameServer
+   *
+   * @param {string} domainName
+   * @param {string} nameServer  hostname of the child nameserver to delete
+   * @returns {Promise<{result:'OK', data:{NameServer}}>}
+   */
+  async DeleteChildNameServer(domainName, nameServer) {
     const parameters = {
-        request: {
-            Password: this.servicePassword,
-            UserName: this.serviceUsername,
-            DomainName: domainName,
-            ChildNameServer: nameServer
-        }
+      request: {
+        Password        : this.servicePassword,
+        UserName        : this.serviceUsername,
+        DomainName      : domainName,
+        ChildNameServer : nameServer,
+      },
     };
 
-    // callApiFunction ile API çağrısı yapıyoruz
     return this.callApiFunction('DeleteChildNameServer', parameters).then((response) => {
-        return {
-            data: {
-                NameServer: parameters.request.ChildNameServer
-            },
-            result: true
-        };
+      if (!response.result) {
+        return setError(response.ErrorCode || 'DELETE_CHILD_NS', response.message || '', '');
+      }
+      return {
+        result: RESULT_OK,
+        data  : { NameServer: nameServer },
+      };
     });
-}
+  }
 
 
-/**
- * Modify Child Name Server for domain
- * @param {string} domainName
- * @param {string} nameServer
- * @param {string} ipAddress
- * @return {Promise<Object>}
- */
-async ModifyChildNameServer(domainName, nameServer, ipAddress) {
+  /**
+   * Modify the IP address of an existing child nameserver.
+   * PHP: DNASoap.php lines 757–780 (#9)
+   * SOAP operation: modifyChildNameServer
+   *
+   * @param {string} domainName
+   * @param {string} nameServer  hostname of the child nameserver
+   * @param {string} ipAddress   new IP address
+   * @returns {Promise<{result:'OK', data:{NameServer, IPAdresses:[string]}}>}
+   */
+  async ModifyChildNameServer(domainName, nameServer, ipAddress) {
     const parameters = {
-        request: {
-            Password: this.servicePassword,
-            UserName: this.serviceUsername,
-            DomainName: domainName,
-            ChildNameServer: nameServer,
-            IpAddressList: [ipAddress]
-        }
+      request: {
+        Password        : this.servicePassword,
+        UserName        : this.serviceUsername,
+        DomainName      : domainName,
+        ChildNameServer : nameServer,
+        IpAddressList   : [ipAddress],
+      },
     };
 
-    // callApiFunction ile API çağrısı yapıyoruz
     return this.callApiFunction('ModifyChildNameServer', parameters).then((response) => {
-        return {
-            data: {
-                NameServer: parameters.request.ChildNameServer,
-                IPAdresses: parameters.request.IpAddressList
-            },
-            result: true
-        };
+      if (!response.result) {
+        return setError(response.ErrorCode || 'MODIFY_CHILD_NS', response.message || '', '');
+      }
+      return {
+        result: RESULT_OK,
+        data  : {
+          NameServer: nameServer,
+          IPAdresses: [ipAddress],   // one-'d' typo preserved from PHP source
+        },
+      };
     });
-}
+  }
 
 /**
  * Get Contacts for domain, Administrative, Billing, Technical, Registrant
@@ -156,44 +176,41 @@ async GetContacts(domainName) {
     });
 }
 
-/**
- * Save Contacts for domain, Contacts segments will be saved as Administrative,
- * Billing, Technical, Registrant.
- * @param {string} domainName
- * @param {Object} contacts
- * @return {Promise<Object>}
- */
-async SaveContacts(domainName, contacts) {
+  /**
+   * Save contacts for a domain (Administrative, Billing, Technical, Registrant).
+   * PHP: DNASoap.php lines 844–880 (#11)
+   * SOAP operation: saveContacts
+   *
+   * NOTE: SOAP transport returns {result:'OK'} with NO data key on success.
+   * This intentionally differs from REST SaveContacts which returns
+   * {result:'OK', data:{contacts:{...}}}. The SOAP contract follows the PHP
+   * DNASoap.php implementation (parseCall callback line 863–865).
+   *
+   * @param {string} domainName
+   * @param {Object} contacts  { Administrative, Billing, Technical, Registrant }
+   * @returns {Promise<{result:'OK'}>}
+   */
+  async SaveContacts(domainName, contacts) {
     const parameters = {
-        request: {
-            Password: this.servicePassword,
-            UserName: this.serviceUsername,
-            DomainName: domainName,
-            AdministrativeContact: contacts.Administrative,
-            BillingContact: contacts.Billing,
-            TechnicalContact: contacts.Technical,
-            RegistrantContact: contacts.Registrant
-        }
+      request: {
+        Password              : this.servicePassword,
+        UserName              : this.serviceUsername,
+        DomainName            : domainName,
+        AdministrativeContact : contacts != null ? contacts.Administrative : undefined,
+        BillingContact        : contacts != null ? contacts.Billing        : undefined,
+        TechnicalContact      : contacts != null ? contacts.Technical      : undefined,
+        RegistrantContact     : contacts != null ? contacts.Registrant     : undefined,
+      },
     };
 
     return this.callApiFunction('SaveContacts', parameters).then((response) => {
-        const data = response[Object.keys(response)[0]];
-
-        let result = {};
-
-        if (data.OperationResult === 'SUCCESS') {
-            result = {
-                result: true
-            };
-        } else {
-            // Hata durumunu ayarla
-            result = data;
-
-        }
-
-        return result;
+      if (!response.result) {
+        return setError(response.ErrorCode || 'CONTACT_SAVE', response.message || '', '');
+      }
+      // SOAP SaveContacts success envelope has NO data key (PHP line 863-865).
+      return { result: RESULT_OK };
     });
-}
+  }
 
 
 /**
@@ -323,133 +340,206 @@ async RejectTransfer(domainName) {
     });
 }
 
-/**
- * Renew domain
- * @param {string} domainName
- * @param {number} period
- * @return {Promise<Object>}
- */
-async Renew(domainName, period) {
+  /**
+   * Renew a domain registration.
+   * PHP: DNASoap.php lines 1035–1064 (#16)
+   * SOAP operation: renew
+   *
+   * Falsy ExpirationDate → setError('DOMAIN_RENEW') — mirrors PHP and REST Renew.
+   * ExpirationDate is formatted via formatApiDate for REST-parity.
+   *
+   * @param {string} domainName
+   * @param {number} period  Renewal period in years
+   * @returns {Promise<{result:'OK', data:{ExpirationDate:string}}>}
+   */
+  async Renew(domainName, period) {
     const parameters = {
-        request: {
-            Password: this.servicePassword,
-            UserName: this.serviceUsername,
-            DomainName: domainName,
-            Period: period
-        }
+      request: {
+        Password  : this.servicePassword,
+        UserName  : this.serviceUsername,
+        DomainName: domainName,
+        Period    : period,
+      },
     };
 
     return this.callApiFunction('Renew', parameters).then((response) => {
-        const data = response[Object.keys(response)[0]];
-
-        if (data.ExpirationDate) {
-            return {
-                result: true,
-                data: {
-                    ExpirationDate: data.ExpirationDate
-                }
-            };
-        } else {
-            return data;
-        }
+      if (!response.result) {
+        return setError(response.ErrorCode || 'DOMAIN_RENEW', response.message || '', '');
+      }
+      if (response.ExpirationDate) {
+        return {
+          result: RESULT_OK,
+          data  : { ExpirationDate: formatApiDate(response.ExpirationDate) },
+        };
+      }
+      // Missing ExpirationDate → mirrors PHP line 1055–1059 and REST Renew
+      return setError('DOMAIN_RENEW');
     });
-}
+  }
 
 
-/**
- * Register domain with contact information
- * @param {string} domainName
- * @param {number} period
- * @param {Object} contacts
- * @param {Array<string>} nameServers
- * @param {boolean} eppLock
- * @param {boolean} privacyLock
- * @param {Object} additionalAttributes
- * @return {Promise<Object>}
- */
-async RegisterWithContactInfo(domainName, period, contacts, nameServers = ["dns.domainnameapi.com", "web.domainnameapi.com"], eppLock = true, privacyLock = false, additionalAttributes = {}) {
+  /**
+   * Register a new domain with full contact information.
+   * PHP: DNASoap.php lines 1080–1192 (#17)
+   * SOAP operation: registerWithContactInfo
+   *
+   * Mirrors PHP exactly:
+   *  1. Strip blank/empty nameservers; fall back to DEFAULT_NAMESERVERS.
+   *  2. Validate all 4 contacts via validateContact().
+   *  3. .tr domains: auto-inject TRABIS* additional attributes if absent.
+   *  4. Build AdditionalAttributes as KeyValueOfstringstring array.
+   *  5. Response: parse DomainInfo via parseSoapDomainInfo.
+   *
+   * @param {string}       domainName
+   * @param {number}       period
+   * @param {Object}       contacts              { Administrative, Billing, Technical, Registrant }
+   * @param {string[]}     [nameServers=[]]       Desired name-servers (empty → DEFAULT_NAMESERVERS)
+   * @param {boolean}      [eppLock=true]
+   * @param {boolean}      [privacyLock=false]
+   * @param {Object|Array} [additionalAttributes=[]]  TLD-specific attributes
+   * @returns {Promise<{result:'OK', data:{...parseSoapDomainInfo}}>}
+   */
+  async RegisterWithContactInfo(
+    domainName, period, contacts, nameServers = [], eppLock = true, privacyLock = false, additionalAttributes = [],
+  ) {
+    // Rule 1: strip blank/empty entries, then fall back to DEFAULT_NAMESERVERS.
+    const filteredNS = Array.isArray(nameServers)
+      ? nameServers.filter((ns) => typeof ns === 'string' && ns.trim().length > 0)
+      : [];
+    const finalNS = filteredNS.length > 0 ? filteredNS : DEFAULT_NAMESERVERS;
+
+    // Rule 2: validate all 4 contacts (PHP calls $this->validateContact() on each).
+    // Defensive: guard against null/missing contact sub-objects.
+    const safeContacts = contacts != null && typeof contacts === 'object' ? contacts : {};
+    const adminContact      = validateContact(Object.assign({}, safeContacts.Administrative || {}));
+    const billingContact    = validateContact(Object.assign({}, safeContacts.Billing        || {}));
+    const technicalContact  = validateContact(Object.assign({}, safeContacts.Technical      || {}));
+    const registrantContact = validateContact(Object.assign({}, safeContacts.Registrant     || {}));
+
     const parameters = {
-        request: {
-            Password: this.servicePassword,
-            UserName: this.serviceUsername,
-            DomainName: domainName,
-            Period: period,
-            NameServerList: {
-                string: nameServers
-            },
-            LockStatus: eppLock,
-            PrivacyProtectionStatus: privacyLock,
-            AdministrativeContact: contacts.Administrative,
-            BillingContact: contacts.Billing,
-            TechnicalContact: contacts.Technical,
-            RegistrantContact: contacts.Registrant
-        }
+      request: {
+        Password              : this.servicePassword,
+        UserName              : this.serviceUsername,
+        DomainName            : domainName,
+        Period                : period,
+        NameServerList        : { string: finalNS },
+        LockStatus            : eppLock,
+        PrivacyProtectionStatus: privacyLock,
+        AdministrativeContact : adminContact,
+        BillingContact        : billingContact,
+        TechnicalContact      : technicalContact,
+        RegistrantContact     : registrantContact,
+      },
     };
 
-    // Eklenen AdditionalAttributes'i işle
-    if (Object.keys(additionalAttributes).length > 0) {
-        parameters.request.AdditionalAttributes = {
-            KeyValueOfstringstring: Object.entries(additionalAttributes).map(([key, value]) => ({
-                Key: key,
-                Value: value
-            }))
-        };
+    // Rule 3: build additionalAttributes object from input.
+    let attrsObj = {};
+    if (Array.isArray(additionalAttributes) && additionalAttributes.length === 0) {
+      attrsObj = {};
+    } else if (Array.isArray(additionalAttributes)) {
+      attrsObj = Object.assign({}, additionalAttributes);
+    } else if (additionalAttributes && typeof additionalAttributes === 'object') {
+      attrsObj = Object.assign({}, additionalAttributes);
     }
 
+    // Rule 3a: .tr domains — auto-inject TRABIS* attributes (PHP lines 1123–1155).
+    if (isTrTLD(domainName)) {
+      if (!attrsObj.TRABISDOMAINCATEGORY) {
+        attrsObj.TRABISDOMAINCATEGORY = '1';
+      }
+      if (!attrsObj.TRABISCOUNTRYID) {
+        attrsObj.TRABISCOUNTRYID   = 215;
+        attrsObj.TRABISCOUNTRYNAME = 'TR';
+        attrsObj.TRABISCITYNAME    = 'Istanbul';
+        attrsObj.TRABISCITIYID     = 34;
+      }
+      if (String(attrsObj.TRABISDOMAINCATEGORY) === '1') {
+        if (!attrsObj.TRABISNAMESURNAME) {
+          attrsObj.TRABISNAMESURNAME = `${registrantContact.FirstName} ${registrantContact.LastName}`;
+        }
+        if (!attrsObj.TRABISCITIZIENID) {
+          attrsObj.TRABISCITIZIENID = '11111111111';
+        }
+        delete attrsObj.TRABISORGANIZATION;
+        delete attrsObj.TRABISTAXOFFICE;
+        delete attrsObj.TRABISTAXNUMBER;
+      } else {
+        if (!attrsObj.TRABISORGANIZATION) {
+          attrsObj.TRABISORGANIZATION = registrantContact.Company || '';
+        }
+        if (!attrsObj.TRABISTAXOFFICE) {
+          attrsObj.TRABISTAXOFFICE = 'Istanbul';
+        }
+        if (!attrsObj.TRABISTAXNUMBER) {
+          attrsObj.TRABISTAXNUMBER = '1111111111';
+        }
+        delete attrsObj.TRABISNAMESURNAME;
+        delete attrsObj.TRABISCITIZIENID;
+      }
+    }
+
+    // Rule 4: serialize attrs into SOAP KeyValueOfstringstring format.
+    if (Object.keys(attrsObj).length > 0) {
+      parameters.request.AdditionalAttributes = {
+        KeyValueOfstringstring: Object.entries(attrsObj).map(([key, value]) => ({
+          Key  : key,
+          Value: String(value),
+        })),
+      };
+    }
 
     return this.callApiFunction('RegisterWithContactInfo', parameters).then((response) => {
-        const data = response[Object.keys(response)[0]];
-        let result = {};
-
-        // Eğer DomainInfo geçerli bir nesne ise
-        if (data.DomainInfo && typeof data.DomainInfo === 'object') {
-            result = {
-                result: true,
-                data: this.parseDomainInfo(data.DomainInfo)
-            };
-        } else {
-
-            result = data;
-        }
-
-        return result;
+      if (!response.result) {
+        return setError(response.ErrorCode || 'DOMAIN_REGISTER', response.message || '', '');
+      }
+      // callApiFunction already extracts RegisterWithContactInfoResult;
+      // response IS that object, so DomainInfo is a direct property.
+      if (response.DomainInfo && typeof response.DomainInfo === 'object') {
+        return parseSoapDomainInfo(response.DomainInfo);
+      }
+      return setError('DOMAIN_REGISTER');
     });
-}
+  }
 
 
-/**
- * Modify privacy protection status of domain
- * @param {string} domainName
- * @param {boolean} status
- * @param {string} [reason="Owner request"]
- * @return {Promise<Object>}
- */
-async ModifyPrivacyProtectionStatus(domainName, status, reason = "Owner request") {
-    // Eğer reason boşsa varsayılan değeri ayarla
-    if (reason.trim() === "") {
-        reason = "Owner request";
+  /**
+   * Modify privacy protection status of a domain.
+   * PHP: DNASoap.php lines 1204–1222 (#18)
+   * SOAP operation: modifyPrivacyProtectionStatus
+   *
+   * PrivacyProtectionStatus in the response echoes back the INPUT status
+   * (PHP line 1217 — does not inspect response body). Matches REST parity.
+   *
+   * @param {string}  domainName
+   * @param {boolean} status
+   * @param {string}  [reason='Owner request']
+   * @returns {Promise<{result:'OK', data:{PrivacyProtectionStatus:boolean}}>}
+   */
+  async ModifyPrivacyProtectionStatus(domainName, status, reason = 'Owner request') {
+    if (typeof reason === 'string' && reason.trim() === '') {
+      reason = 'Owner request';
     }
 
     const parameters = {
-        request: {
-            Password: this.servicePassword,
-            UserName: this.serviceUsername,
-            DomainName: domainName,
-            ProtectPrivacy: status,
-            Reason: reason
-        }
+      request: {
+        Password      : this.servicePassword,
+        UserName      : this.serviceUsername,
+        DomainName    : domainName,
+        ProtectPrivacy: status,
+        Reason        : reason,
+      },
     };
 
-    // API çağrısı ve yanıt işleme
     return this.callApiFunction('ModifyPrivacyProtectionStatus', parameters).then((response) => {
-        return {
-            data: {
-                PrivacyProtectionStatus: parameters.request.ProtectPrivacy
-            },
-            result: true
-        };
+      if (!response.result) {
+        return setError(response.ErrorCode || 'MODIFY_PRIVACY', response.message || '', '');
+      }
+      return {
+        result: RESULT_OK,
+        data  : { PrivacyProtectionStatus: status },
+      };
     });
-}
+  }
 
 
 /**
