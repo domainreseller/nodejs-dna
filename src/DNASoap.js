@@ -1,6 +1,7 @@
 const soap = require('strong-soap').soap;
 const { SOAP_URL, VERSION, BUSINESS_METHODS, validateContact, isTrTLD, setError, RESULT_OK } = require('./shared');
 const { parseSoapDomainInfo, parseSoapContactInfo } = require('./soap-normalize');
+const { normalizeDomainStatus, formatApiDate } = require('./rest-normalize');
 
 class DNASoap {
   static VERSION = VERSION;
@@ -538,154 +539,306 @@ async GetCurrentBalance(currencyId = 2) {
 
 
 /**
- * Check Availability, SLD and TLD must be in array
- * @param {Array<string>} domains
- * @param {Array<string>} extensions
- * @param {number} period
- * @param {string} command
- * @return {Promise<Array<Object>>}
+ * Check domain availability for a cartesian product of names × extensions.
+ * PHP: DNASoap.php lines 379–429 (#3)
+ * SOAP operation: checkAvailability (note: Commad typo in request — preserved)
+ *
+ * Returns a DIRECT ARRAY on success (same shape as REST CheckAvailability).
+ * Returns setError(...) envelope on any failure — never throws.
+ *
+ * @param {string[]} domains    SLD parts, e.g. ['example', 'test']
+ * @param {string[]} extensions TLD parts, e.g. ['com', '.net']
+ * @param {number}   [period=1]
+ * @param {string}   [command='create']
+ * @returns {Promise<Array|{result:'ERROR', error:{...}}>}
  */
-async CheckAvailability(domains, extensions, period=1, command='create') {
-      const parameters = {
-        request: {
-          Password      : this.servicePassword,
-          UserName      : this.serviceUsername,
-          DomainNameList: {
-            string: domains, // Array of domains
-          },
-          TldList       : {
-            string: extensions, // Array of extensions
-          },
-          Period        : period,
-          Commad       : command,
-        },
-      };
+async CheckAvailability(domains, extensions, period = 1, command = 'create') {
+  const parameters = {
+    request: {
+      Password      : this.servicePassword,
+      UserName      : this.serviceUsername,
+      DomainNameList: { string: domains },
+      TldList       : { string: extensions },
+      Period        : period,
+      Commad        : command, // deliberate API typo — preserved verbatim
+    },
+  };
 
-    return this.callApiFunction('CheckAvailability', parameters).then((response) => {
-        const data = response;
-        const available = [];
+  return this.callApiFunction('CheckAvailability', parameters).then((response) => {
+    // Error path: callApiFunction sets result:false for all failure modes.
+    if (!response.result) {
+      return setError(
+        response.ErrorCode || 'AVAILABILITY',
+        response.message   || '',
+        '',
+      );
+    }
 
-        if (data.DomainAvailabilityInfoList?.DomainAvailabilityInfo?.Tld) {
-            const buffer = data.DomainAvailabilityInfoList.DomainAvailabilityInfo;
-            data.DomainAvailabilityInfoList = {
-                DomainAvailabilityInfo: [buffer]
-            };
-        }else{
+    // Guard: the response payload must include DomainAvailabilityInfoList.
+    const infoList = response.DomainAvailabilityInfoList;
+    if (!infoList || infoList.DomainAvailabilityInfo == null) {
+      return setError('AVAILABILITY', 'No availability data in response', '');
+    }
 
-        }
+    // SOAP collapses a single-result list into a plain object (no array).
+    // Detect this by checking for a scalar 'Tld' field directly on the value.
+    let list = infoList.DomainAvailabilityInfo;
+    if (!Array.isArray(list)) {
+      if (list && typeof list === 'object') {
+        list = [list];
+      } else {
+        return setError('AVAILABILITY', 'Unexpected availability response structure', '');
+      }
+    }
 
-        data.DomainAvailabilityInfoList.DomainAvailabilityInfo.forEach(value => {
-            available.push({
-                TLD: value.Tld,
-                DomainName: value.DomainName,
-                Status: value.Status,
-                Command: value.Command,
-                Period: value.Period,
-                IsFee: value.IsFee,
-                Price: value.Price,
-                Currency: value.Currency,
-                Reason: value.Reason
-            });
-        });
+    const available = [];
+    for (const item of list) {
+      if (!item || typeof item !== 'object') continue;
 
-        return available;
-    });
+      // Normalize status to 'available'/'notavailable' — matches REST output.
+      const rawStatus   = String(item.Status != null ? item.Status : '').toLowerCase();
+      const isAvailable = ['available', '1', 'true'].includes(rawStatus);
+
+      // Price: format to 4 decimal places when non-null (mirrors REST).
+      const rawPrice = item.Price != null ? parseFloat(item.Price) : null;
+
+      available.push({
+        TLD      : item.Tld      != null ? item.Tld      : '',
+        DomainName: item.DomainName != null ? item.DomainName : '',
+        Status   : isAvailable ? 'available' : 'notavailable',
+        Command  : item.Command  != null ? item.Command  : command,
+        Period   : item.Period   != null ? item.Period   : period,
+        IsFee    : item.IsFee    != null ? item.IsFee    : false,
+        Price    : rawPrice      != null ? rawPrice.toFixed(4) : null,
+        Currency : item.Currency != null ? item.Currency : null,
+        Reason   : item.Reason   != null ? item.Reason   : null,
+      });
+    }
+
+    return available;
+  });
 }
 
 
 /**
- * Get Domain List of your account
- * @param {Object} extraParameters
- * @return {Promise<Object>}
+ * Get list of domains in the reseller account.
+ * PHP: DNASoap.php lines 438–484 (#4)
+ * SOAP operation: getList
+ *
+ * Returns {result:'OK', TotalCount, data:{Domains:[...]}} — same envelope as
+ * REST GetList.  Each domain item uses the REST-equivalent shape:
+ *   - normalizeDomainStatus for numeric Status values
+ *   - LockStatus / PrivacyProtectionStatus / IsChildNameServer as 'true'/'false' strings
+ *   - Contacts with empty-string IDs (list endpoint does not provide them)
+ *   - Dates.Start / Dates.Expiration formatted via formatApiDate
+ * Handles the SOAP single-domain collapse (DomainInfo is an object, not array).
+ *
+ * @param {Object} [extraParameters={}]
+ * @returns {Promise<{result:string, TotalCount:number, data:{Domains:Array}}>}
  */
 async GetList(extraParameters = {}) {
-    const parameters = {
-        request: {
-            Password: this.servicePassword,
-            UserName: this.serviceUsername,
-            ...extraParameters
+  const parameters = {
+    request: {
+      Password: this.servicePassword,
+      UserName: this.serviceUsername,
+      ...extraParameters,
+    },
+  };
+
+  return this.callApiFunction('GetList', parameters).then((response) => {
+    // Error path.
+    if (!response.result) {
+      return setError('DOMAIN_LIST', response.message || '', '');
+    }
+
+    // TotalCount must be present (even 0 is valid).
+    if (response.TotalCount == null) {
+      return setError('DOMAIN_LIST', 'Invalid domain list response', '');
+    }
+
+    // Collect the raw domain objects.
+    // Guard: DomainInfoList may be absent (empty account).
+    let rawList = [];
+    if (response.DomainInfoList && response.DomainInfoList.DomainInfo != null) {
+      const di = response.DomainInfoList.DomainInfo;
+      if (Array.isArray(di)) {
+        rawList = di;
+      } else if (di && typeof di === 'object') {
+        // SOAP collapses single-domain account into a plain object.
+        rawList = [di];
+      }
+    }
+
+    // Map each raw SOAP domain item to the REST-equivalent shape.
+    const domains = rawList.map((item) => {
+      if (!item || typeof item !== 'object') {
+        return null;
+      }
+
+      // Resolve NameServers from NameServerList.NameServer (string or array).
+      const nameServers = [];
+      if (item.NameServerList && typeof item.NameServerList === 'object') {
+        for (const nsVal of Object.values(item.NameServerList)) {
+          if (Array.isArray(nsVal)) {
+            for (const nsItem of nsVal) nameServers.push(String(nsItem));
+          } else if (nsVal != null) {
+            nameServers.push(String(nsVal));
+          }
         }
+      }
+
+      return {
+        ID                     : parseInt(item.Id) || 0,
+        Status                 : normalizeDomainStatus(item.Status != null ? item.Status : ''),
+        DomainName             : item.DomainName != null ? String(item.DomainName) : '',
+        AuthCode               : item.Auth != null ? String(item.Auth) : '',
+        LockStatus             : item.LockStatus ? 'true' : 'false',
+        PrivacyProtectionStatus: item.PrivacyProtectionStatus ? 'true' : 'false',
+        IsChildNameServer      : item.IsChildNameServer ? 'true' : 'false',
+        // List endpoint does not supply contact IDs — use empty strings (REST parity).
+        Contacts: {
+          Billing       : { ID: '' },
+          Technical     : { ID: '' },
+          Administrative: { ID: '' },
+          Registrant    : { ID: '' },
+        },
+        Dates: {
+          Start        : formatApiDate(item.StartDate      != null ? item.StartDate      : null),
+          Expiration   : formatApiDate(item.ExpirationDate != null ? item.ExpirationDate : null),
+          RemainingDays: parseInt(item.RemainingDay) || 0,
+        },
+        NameServers     : nameServers,
+        Additional      : [],
+        ChildNameServers: [],
+      };
+    }).filter(Boolean); // drop any null placeholders from bad items
+
+    return {
+      result    : RESULT_OK,
+      TotalCount: parseInt(response.TotalCount) || 0,
+      data      : { Domains: domains },
     };
-
-    return this.callApiFunction('GetList', parameters).then((response) => {
-
-        const data = response;
-        let result = {};
-
-        if (data.TotalCount && Number.isInteger(data.TotalCount)) {
-            result.data = { domains: [] };
-
-            if (data.DomainInfoList?.DomainInfo?.Id) {
-                result.data.domains.push(data.DomainInfoList.DomainInfo);
-            } else {
-                data.DomainInfoList.DomainInfo.forEach(domainInfo => {
-                    result.data.domains.push(this.parseDomainInfo(domainInfo));
-                });
-            }
-
-            result.result = true;
-            result.totalCount = data.TotalCount;
-        } else {
-            result= data;
-        }
-
-        return result;
-    });
+  });
 }
 
 
 
 /**
- * Return tld list and pricing matrix
- * @param {number} count
- * @return {Promise<Object>}
+ * Get TLD list with pricing matrix.
+ * PHP: DNASoap.php lines 493–551 (#5)
+ * SOAP operation: getTldList
+ *
+ * Returns {result:'OK', data:[...]} — same envelope as REST GetTldList.
+ * Each TLD entry uses the REST-equivalent shape:
+ *   - id is sequential starting from 1 (REST parity; not the SOAP TLD Id)
+ *   - TradeType mapped: 'register' → 'registration', others pass through lowercase
+ *   - period 0 → normalized to 1
+ *   - pricing periods sorted numerically ascending
+ *   - price formatted to 4 decimal places
+ * Handles SOAP single-TLD collapse (TldInfo is a plain object, not array).
+ * Handles single TldPriceInfo entry (plain object, not array).
+ *
+ * @param {number} [count=20]
+ * @returns {Promise<{result:string, data:Array}>}
  */
-  async GetTldList(count = 20) {
-    const parameters = {
-        request: {
-            Password: this.servicePassword,
-            UserName: this.serviceUsername,
-            IncludePriceDefinitions: 1,
-            PageSize: count
+async GetTldList(count = 20) {
+  const parameters = {
+    request: {
+      Password               : this.servicePassword,
+      UserName               : this.serviceUsername,
+      IncludePriceDefinitions: 1,
+      PageSize               : count,
+    },
+  };
+
+  // TradeType → output pricing key map (mirrors REST priceTypeMap).
+  const tradeTypeMap = {
+    register : 'registration',
+    renew    : 'renew',
+    transfer : 'transfer',
+    restore  : 'restore',
+    refund   : 'refund',
+    backorder: 'backorder',
+  };
+
+  return this.callApiFunction('GetTldList', parameters).then((response) => {
+    // Error path.
+    if (!response.result) {
+      return setError('TLD_LIST', response.message || '', '');
+    }
+
+    // Guard: TldInfoList must be present and contain TldInfo.
+    if (!response.TldInfoList || response.TldInfoList.TldInfo == null) {
+      return setError('TLD_LIST', 'No TLD list in response', '');
+    }
+
+    // Normalize TldInfo into an array (SOAP collapses single record).
+    let tldInfoRaw = response.TldInfoList.TldInfo;
+    if (!Array.isArray(tldInfoRaw)) {
+      if (tldInfoRaw && typeof tldInfoRaw === 'object') {
+        tldInfoRaw = [tldInfoRaw];
+      } else {
+        return setError('TLD_LIST', 'Invalid TLD list format', '');
+      }
+    }
+
+    let idCounter = 1;
+    const tldData = [];
+
+    for (const v of tldInfoRaw) {
+      if (!v || typeof v !== 'object') continue;
+
+      const pricing    = {};
+      const currencies = {};
+
+      // Normalize PriceInfoList.TldPriceInfo into an array.
+      let priceItems = [];
+      if (v.PriceInfoList && v.PriceInfoList.TldPriceInfo != null) {
+        const pp = v.PriceInfoList.TldPriceInfo;
+        priceItems = Array.isArray(pp) ? pp : [pp];
+      }
+
+      for (const vp of priceItems) {
+        if (!vp || typeof vp !== 'object') continue;
+
+        const rawType = typeof vp.TradeType === 'string' ? vp.TradeType.toLowerCase() : '';
+        const outType = tradeTypeMap[rawType] !== undefined ? tradeTypeMap[rawType] : rawType;
+
+        // Period 0 → 1 (matches REST normalization).
+        let p = parseInt(vp.Period != null ? vp.Period : 1) || 1;
+        if (p < 1) p = 1;
+
+        const price = vp.Price != null ? parseFloat(vp.Price).toFixed(4) : '0.0000';
+
+        if (!pricing[outType]) pricing[outType] = {};
+        pricing[outType][p] = price;
+        currencies[outType]  = vp.CurrencyName != null ? vp.CurrencyName : '';
+      }
+
+      // Sort each pricing sub-object by period key numerically ascending.
+      for (const outType of Object.keys(pricing)) {
+        const sorted = {};
+        for (const k of Object.keys(pricing[outType]).map(Number).sort((a, b) => a - b)) {
+          sorted[k] = pricing[outType][k];
         }
-    };
+        pricing[outType] = sorted;
+      }
 
-    return this.callApiFunction('GetTldList', parameters).then((response) => {
-        const data = response;
-        let result = {};
+      tldData.push({
+        id       : idCounter++,
+        status   : v.Status                != null ? v.Status                : 'Active',
+        maxchar  : v.MaxCharacterCount      != null ? v.MaxCharacterCount      : 63,
+        maxperiod: v.MaxRegistrationPeriod  != null ? v.MaxRegistrationPeriod  : 10,
+        minchar  : v.MinCharacterCount      != null ? v.MinCharacterCount      : 1,
+        minperiod: v.MinRegistrationPeriod  != null ? v.MinRegistrationPeriod  : 1,
+        tld      : v.Name                  != null ? v.Name                  : '',
+        pricing,
+        currencies,
+      });
+    }
 
-        if (data.TldInfoList.TldInfo.length > 0) {
-            const extensions = data.TldInfoList.TldInfo.map(v => {
-                const pricing = {};
-                const currencies = {};
-
-                v.PriceInfoList.TldPriceInfo.forEach(vp => {
-                    pricing[vp.TradeType.toLowerCase()] = {
-                        [vp.Period]: vp.Price
-                    };
-                    currencies[vp.TradeType.toLowerCase()] = vp.CurrencyName;
-                });
-
-                return {
-                    id: v.Id,
-                    status: v.Status,
-                    maxchar: v.MaxCharacterCount,
-                    maxperiod: v.MaxRegistrationPeriod,
-                    minchar: v.MinCharacterCount,
-                    minperiod: v.MinRegistrationPeriod,
-                    tld: v.Name,
-                    pricing,
-                    currencies
-                };
-            });
-
-            result = { data: extensions, result: true };
-        } else {
-            result = data
-        }
-
-        return result;
-    });
+    return { result: RESULT_OK, data: tldData };
+  });
 }
 
   /**
