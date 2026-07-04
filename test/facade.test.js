@@ -81,40 +81,36 @@ test('ValidateContact fills defaults through SOAP facade (network-free)', () => 
   assert.strictEqual(result.Country, 'TR');
 });
 
-test('4 new API methods exist and throw Phase-3-Task-8 error on REST facade', () => {
+test('4 new API methods are implemented (return Promise, do not throw synchronously) on REST facade', () => {
+  // Phase 3 Task 8: methods are now fully implemented — skeletons replaced.
   const api = new DomainNameApi('550e8400-e29b-41d4-a716-446655440000', 'token');
   const methods = [
     'ModifyNameServer', 'EnableTheftProtectionLock',
     'DisableTheftProtectionLock', 'CheckTransfer',
   ];
   for (const method of methods) {
-    assert.throws(
-      () => api[method](),
-      (err) => {
-        assert.ok(err.message.includes('Phase 3 Task 8'),
-          `${method}: expected "Phase 3 Task 8" in message, got: ${err.message}`);
-        return true;
-      },
-      `REST facade.${method}() should throw`,
-    );
+    assert.strictEqual(typeof api[method], 'function',
+      `${method} must be a function on REST facade`);
+    // Must not throw synchronously (real implementation returns a Promise).
+    const result = api[method]('example.com', 'arg2');
+    assert.ok(result && typeof result.then === 'function',
+      `${method} must return a Promise (REST facade)`);
   }
 });
 
-test('4 new API methods exist and throw Phase-3-Task-8 error on SOAP facade', () => {
+test('4 new API methods are implemented (return Promise, do not throw synchronously) on SOAP facade', () => {
+  // Phase 3 Task 8: methods are now fully implemented — skeletons replaced.
   const api = new DomainNameApi('ownername', 'ownerpass');
   const methods = [
     'ModifyNameServer', 'EnableTheftProtectionLock',
     'DisableTheftProtectionLock', 'CheckTransfer',
   ];
   for (const method of methods) {
-    assert.throws(
-      () => api[method](),
-      (err) => {
-        assert.ok(err.message.includes('Phase 3 Task 8'),
-          `${method}: expected "Phase 3 Task 8" in message, got: ${err.message}`);
-        return true;
-      },
-      `SOAP facade.${method}() should throw`,
-    );
+    assert.strictEqual(typeof api[method], 'function',
+      `${method} must be a function on SOAP facade`);
+    // Must not throw synchronously (real implementation returns a Promise).
+    const result = api[method]('example.com', 'arg2');
+    assert.ok(result && typeof result.then === 'function',
+      `${method} must return a Promise (SOAP facade)`);
   }
 });

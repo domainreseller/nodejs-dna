@@ -2,7 +2,7 @@
 
 const https = require('node:https');
 const axios = require('axios');
-const { REST_URL_PROD, REST_URL_OTE, BUSINESS_METHODS, DEFAULT_TIMEOUT, setError, formatErrorCode, RESULT_OK, DEFAULT_NAMESERVERS, validateContact, isTrTLD } = require('./shared');
+const { REST_URL_PROD, REST_URL_OTE, BUSINESS_METHODS, DEFAULT_TIMEOUT, setError, formatErrorCode, RESULT_OK, RESULT_ERROR, DEFAULT_NAMESERVERS, validateContact, isTrTLD } = require('./shared');
 const { parseDomainInfo, parseContactInfo, parseContact, normalizeDomainStatus, formatApiDate, normalizeTrAttributes, stringifyAttributes } = require('./rest-normalize');
 
 // Module-level axios instance: never throws on non-2xx; SSL verification off.
@@ -1064,20 +1064,151 @@ DNARest.prototype.IsTrTLD = function IsTrTLD(domain) {
 // Real implementations land in Phase 3 Task 8.
 // ---------------------------------------------------------------------------
 
-DNARest.prototype.ModifyNameServer = function ModifyNameServer() {
-  throw new Error('DNARest.ModifyNameServer() not implemented yet (Phase 3 Task 8)');
+/**
+ * Replace the full nameserver set for a domain.
+ * PUT domains/dns/name-server
+ * PHP: DNARest.php lines 840–858 (B1).
+ *
+ * nameServers is passed through array_values() (PHP parity — re-index).
+ * Response: uses response.nameServers ?? nameServers (PHP line 849).
+ * Envelope matches SOAP ModifyNameServer: {result:'OK', data:{NameServers:[...]}}.
+ *
+ * @param {string}   domainName
+ * @param {string[]} nameServers  New nameserver list (re-indexed)
+ */
+DNARest.prototype.ModifyNameServer = async function ModifyNameServer(domainName, nameServers) {
+  const ns = Array.isArray(nameServers) ? [...nameServers] : [];
+  try {
+    const payload  = { domainName, nameServers: ns };
+    const response = await this.request('PUT', 'domains/dns/name-server', payload);
+    return {
+      result: RESULT_OK,
+      data  : {
+        NameServers: (response && response.nameServers != null ? response.nameServers : null) ?? ns,
+      },
+    };
+  } catch (err) {
+    return setError(
+      err.statusCode || 'MODIFY_NS',
+      err.message,
+      (this.lastParsedResponse && this.lastParsedResponse.Details) ||
+        (this.lastResponse && this.lastResponse.raw_response) ||
+        err.message,
+    );
+  }
 };
 
-DNARest.prototype.EnableTheftProtectionLock = function EnableTheftProtectionLock() {
-  throw new Error('DNARest.EnableTheftProtectionLock() not implemented yet (Phase 3 Task 8)');
+/**
+ * Enable EPP/theft-protection lock on a domain.
+ * POST domains/lock {domainName, lockStatus: true}
+ * PHP: DNARest.php lines 866–885 (B2).
+ *
+ * Response body is ignored; LockStatus: true is hard-coded (matches PHP line 875).
+ * Envelope matches SOAP EnableTheftProtectionLock: {result:'OK', data:{LockStatus:true}}.
+ *
+ * @param {string} domainName
+ */
+DNARest.prototype.EnableTheftProtectionLock = async function EnableTheftProtectionLock(domainName) {
+  try {
+    await this.request('POST', 'domains/lock', { domainName, lockStatus: true });
+    return {
+      result: RESULT_OK,
+      data  : { LockStatus: true },
+    };
+  } catch (err) {
+    return setError(
+      err.statusCode || 'ENABLE_LOCK',
+      err.message,
+      (this.lastParsedResponse && this.lastParsedResponse.Details) ||
+        (this.lastResponse && this.lastResponse.raw_response) ||
+        err.message,
+    );
+  }
 };
 
-DNARest.prototype.DisableTheftProtectionLock = function DisableTheftProtectionLock() {
-  throw new Error('DNARest.DisableTheftProtectionLock() not implemented yet (Phase 3 Task 8)');
+/**
+ * Disable EPP/theft-protection lock on a domain.
+ * POST domains/lock {domainName, lockStatus: false}
+ * PHP: DNARest.php lines 887–910 (B3).
+ *
+ * Response body is ignored; LockStatus: false is hard-coded (matches PHP line 898).
+ * Envelope matches SOAP DisableTheftProtectionLock: {result:'OK', data:{LockStatus:false}}.
+ *
+ * @param {string} domainName
+ */
+DNARest.prototype.DisableTheftProtectionLock = async function DisableTheftProtectionLock(domainName) {
+  try {
+    await this.request('POST', 'domains/lock', { domainName, lockStatus: false });
+    return {
+      result: RESULT_OK,
+      data  : { LockStatus: false },
+    };
+  } catch (err) {
+    return setError(
+      err.statusCode || 'DISABLE_LOCK',
+      err.message,
+      (this.lastParsedResponse && this.lastParsedResponse.Details) ||
+        (this.lastResponse && this.lastResponse.raw_response) ||
+        err.message,
+    );
+  }
 };
 
-DNARest.prototype.CheckTransfer = function CheckTransfer() {
-  throw new Error('DNARest.CheckTransfer() not implemented yet (Phase 3 Task 8)');
+/**
+ * Check domain transferability with EPP code.
+ * POST domains/transfers/check {domainName, authCode}
+ * PHP: DNARest.php lines 1799–1836 (B4).
+ *
+ * TRANSPORT DIFFERENCE vs SOAP:
+ *   REST returns a richer envelope with TransferAvailabilityStatus and related
+ *   fields. SOAP returns bare {result:'OK'} or {result:'ERROR'}.
+ *   Both transports set result:'OK' when transferAvailabilityStatus is truthy,
+ *   and result:'ERROR' otherwise.
+ *
+ * On unavailability: adds error key with TRANSFER_NOT_AVAILABLE code (PHP line 1822).
+ *
+ * @param {string} domainName
+ * @param {string} authcode  EPP/auth code
+ */
+DNARest.prototype.CheckTransfer = async function CheckTransfer(domainName, authcode) {
+  try {
+    const payload  = { domainName, authCode: authcode };
+    const response = await this.request('POST', 'domains/transfers/check', payload);
+
+    const available = !!(response && response.transferAvailabilityStatus);
+    const envelope  = {
+      result: available ? RESULT_OK : RESULT_ERROR,
+      data  : {
+        TransferAvailabilityStatus: available,
+        AuthCodeIsRequired        : !!(response && response.authCodeIsRequired),
+        AuthCodeIsValid           : !!(response && response.authCodeIsValid),
+        UserTransferRequired      : !!(response && response.userTransferRequired),
+        TransferLock              : !!(response && response.transferLock),
+        Message                   : String((response && response.message)    ?? ''),
+        MessageKey                : String((response && response.messageKey) ?? ''),
+        Additional                : (response && response.additionalAttributes != null)
+          ? response.additionalAttributes
+          : [],
+      },
+    };
+    if (!available) {
+      // PHP line 1822: add error key with TRANSFER_NOT_AVAILABLE (mirrors PHP exactly).
+      envelope.error = setError(
+        'TRANSFER_NOT_AVAILABLE',
+        (response && response.message)    ?? 'Domain is not transferable',
+        (response && response.messageKey) ?? ((response && response.message) ?? ''),
+      ).error;
+    }
+    return envelope;
+  } catch (err) {
+    return setError(
+      err.statusCode || 'CHECK_TRANSFER',
+      err.message,
+      (this.lastParsedResponse && this.lastParsedResponse.Details) ||
+        (this.lastResponse && this.lastResponse.raw_response) ||
+        err.message,
+    );
+  }
 };
 
 // ---------------------------------------------------------------------------

@@ -1,5 +1,5 @@
 const soap = require('strong-soap').soap;
-const { SOAP_URL, VERSION, BUSINESS_METHODS, validateContact, isTrTLD, setError, RESULT_OK, DEFAULT_NAMESERVERS } = require('./shared');
+const { SOAP_URL, VERSION, BUSINESS_METHODS, validateContact, isTrTLD, setError, RESULT_OK, RESULT_ERROR, DEFAULT_NAMESERVERS } = require('./shared');
 const { parseSoapDomainInfo, parseSoapContactInfo } = require('./soap-normalize');
 const { normalizeDomainStatus, formatApiDate } = require('./rest-normalize');
 
@@ -1219,20 +1219,130 @@ DNASoap.prototype.IsTrTLD = function IsTrTLD(domain) {
 // Real implementations land in Phase 3 Task 8.
 // ---------------------------------------------------------------------------
 
-DNASoap.prototype.ModifyNameServer = function ModifyNameServer() {
-  throw new Error('DNASoap.ModifyNameServer() not implemented yet (Phase 3 Task 8)');
+/**
+ * Replace the full nameserver set for a domain.
+ * PHP: DNASoap.php lines 599–621 (B1).
+ * SOAP operation: modifyNameServer
+ *
+ * PHP callback echoes back parameters.request.NameServerList (does NOT
+ * inspect the response body). Envelope matches REST ModifyNameServer:
+ *   {result:'OK', data:{NameServers:[...]}}
+ *
+ * @param {string}   domainName
+ * @param {string[]} nameServers  New nameserver list (re-indexed, PHP array_values)
+ */
+DNASoap.prototype.ModifyNameServer = function ModifyNameServer(domainName, nameServers) {
+  const ns = Array.isArray(nameServers) ? [...nameServers] : [];
+  const parameters = {
+    request: {
+      Password      : this.servicePassword,
+      UserName      : this.serviceUsername,
+      DomainName    : domainName,
+      NameServerList: ns,
+    },
+  };
+  return this.callApiFunction('ModifyNameServer', parameters).then((response) => {
+    if (!response.result) {
+      return setError(response.ErrorCode || 'MODIFY_NS', response.message || '', '');
+    }
+    return {
+      result: RESULT_OK,
+      data  : { NameServers: ns },
+    };
+  });
 };
 
-DNASoap.prototype.EnableTheftProtectionLock = function EnableTheftProtectionLock() {
-  throw new Error('DNASoap.EnableTheftProtectionLock() not implemented yet (Phase 3 Task 8)');
+/**
+ * Enable EPP/theft-protection lock on a domain.
+ * PHP: DNASoap.php lines 631–650 (B2).
+ * SOAP operation: enableTheftProtectionLock
+ *
+ * PHP callback ignores response body; hard-codes LockStatus:true.
+ * Envelope matches REST EnableTheftProtectionLock:
+ *   {result:'OK', data:{LockStatus:true}}
+ *
+ * @param {string} domainName
+ */
+DNASoap.prototype.EnableTheftProtectionLock = function EnableTheftProtectionLock(domainName) {
+  const parameters = {
+    request: {
+      Password  : this.servicePassword,
+      UserName  : this.serviceUsername,
+      DomainName: domainName,
+    },
+  };
+  return this.callApiFunction('EnableTheftProtectionLock', parameters).then((response) => {
+    if (!response.result) {
+      return setError(response.ErrorCode || 'ENABLE_LOCK', response.message || '', '');
+    }
+    return {
+      result: RESULT_OK,
+      data  : { LockStatus: true },
+    };
+  });
 };
 
-DNASoap.prototype.DisableTheftProtectionLock = function DisableTheftProtectionLock() {
-  throw new Error('DNASoap.DisableTheftProtectionLock() not implemented yet (Phase 3 Task 8)');
+/**
+ * Disable EPP/theft-protection lock on a domain.
+ * PHP: DNASoap.php lines 660–680 (B3).
+ * SOAP operation: disableTheftProtectionLock
+ *
+ * PHP callback ignores response body; hard-codes LockStatus:false.
+ * Envelope matches REST DisableTheftProtectionLock:
+ *   {result:'OK', data:{LockStatus:false}}
+ *
+ * @param {string} domainName
+ */
+DNASoap.prototype.DisableTheftProtectionLock = function DisableTheftProtectionLock(domainName) {
+  const parameters = {
+    request: {
+      Password  : this.servicePassword,
+      UserName  : this.serviceUsername,
+      DomainName: domainName,
+    },
+  };
+  return this.callApiFunction('DisableTheftProtectionLock', parameters).then((response) => {
+    if (!response.result) {
+      return setError(response.ErrorCode || 'DISABLE_LOCK', response.message || '', '');
+    }
+    return {
+      result: RESULT_OK,
+      data  : { LockStatus: false },
+    };
+  });
 };
 
-DNASoap.prototype.CheckTransfer = function CheckTransfer() {
-  throw new Error('DNASoap.CheckTransfer() not implemented yet (Phase 3 Task 8)');
+/**
+ * Check domain transferability with EPP code.
+ * PHP: DNASoap.php lines 1270–1285 (B4).
+ * SOAP operation: checkTransfer
+ *
+ * TRANSPORT DIFFERENCE vs REST:
+ *   SOAP returns BARE {result:'OK'} or {result:'ERROR'} — no data key.
+ *   REST returns a richer envelope with TransferAvailabilityStatus and fields.
+ *   This is the documented php-dna divergence; both transports are faithful
+ *   to their respective PHP implementations.
+ *
+ * @param {string} domainName
+ * @param {string} authcode  EPP/auth code
+ */
+DNASoap.prototype.CheckTransfer = function CheckTransfer(domainName, authcode) {
+  const parameters = {
+    request: {
+      Password  : this.servicePassword,
+      UserName  : this.serviceUsername,
+      DomainName: domainName,
+      AuthCode  : authcode,
+    },
+  };
+  return this.callApiFunction('CheckTransfer', parameters).then((response) => {
+    // PHP callback: return {result:'OK'} when OperationResult==='SUCCESS', else {result:'ERROR'}.
+    // callApiFunction already maps OperationResult==='SUCCESS' → result:true.
+    if (!response.result) {
+      return { result: RESULT_ERROR };
+    }
+    return { result: RESULT_OK };
+  });
 };
 
 // ---------------------------------------------------------------------------
