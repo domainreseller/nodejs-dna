@@ -22,6 +22,9 @@ const BUSINESS_METHODS = [
   'SaveContacts', 'Transfer', 'CancelTransfer', 'ApproveTransfer', 'RejectTransfer', 'Renew',
   'RegisterWithContactInfo', 'ModifyPrivacyProtectionStatus', 'SyncFromRegistry',
   'GetCurrentBalance', 'CheckAvailability', 'GetList', 'GetTldList', 'GetDetails', 'GetResellerDetails',
+  // Phase 3 additions (Task 3): 4 new API methods + 2 pure utilities
+  'ModifyNameServer', 'EnableTheftProtectionLock', 'DisableTheftProtectionLock', 'CheckTransfer',
+  'ValidateContact', 'IsTrTLD',
 ];
 
 const RESULT_OK = 'OK';

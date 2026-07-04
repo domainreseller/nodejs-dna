@@ -2,7 +2,7 @@
 
 const https = require('node:https');
 const axios = require('axios');
-const { REST_URL_PROD, REST_URL_OTE, BUSINESS_METHODS, DEFAULT_TIMEOUT, setError, formatErrorCode, RESULT_OK, DEFAULT_NAMESERVERS } = require('./shared');
+const { REST_URL_PROD, REST_URL_OTE, BUSINESS_METHODS, DEFAULT_TIMEOUT, setError, formatErrorCode, RESULT_OK, DEFAULT_NAMESERVERS, validateContact, isTrTLD } = require('./shared');
 const { parseDomainInfo, parseContactInfo, parseContact, normalizeDomainStatus, formatApiDate, normalizeTrAttributes, stringifyAttributes } = require('./rest-normalize');
 
 // Module-level axios instance: never throws on non-2xx; SSL verification off.
@@ -1027,6 +1027,57 @@ DNARest.prototype.RegisterWithContactInfo = async function RegisterWithContactIn
         err.message,
     );
   }
+};
+
+// ---------------------------------------------------------------------------
+// Phase 3 Task 3: Pure utility methods — delegate directly to shared functions.
+// Defined BEFORE the skeleton loop so the guard skips them.
+// ---------------------------------------------------------------------------
+
+/**
+ * Validate and normalise a contact object.
+ * Pure synchronous function — no network call, no Promise.
+ * Delegates to the shared validateContact() utility.
+ *
+ * @param {Object} contact
+ * @returns {Object} The mutated contact with defaults applied
+ */
+DNARest.prototype.ValidateContact = function ValidateContact(contact) {
+  return validateContact(contact);
+};
+
+/**
+ * Return true if the domain ends with '.tr'.
+ * Pure synchronous function — no network call.
+ * Delegates to the shared isTrTLD() utility.
+ *
+ * @param {string} domain
+ * @returns {boolean}
+ */
+DNARest.prototype.IsTrTLD = function IsTrTLD(domain) {
+  return isTrTLD(domain);
+};
+
+// ---------------------------------------------------------------------------
+// Phase 3 Task 3: Temporary skeletons for the 4 new API methods.
+// These are defined BEFORE the skeleton loop so the loop skips them.
+// Real implementations land in Phase 3 Task 8.
+// ---------------------------------------------------------------------------
+
+DNARest.prototype.ModifyNameServer = function ModifyNameServer() {
+  throw new Error('DNARest.ModifyNameServer() not implemented yet (Phase 3 Task 8)');
+};
+
+DNARest.prototype.EnableTheftProtectionLock = function EnableTheftProtectionLock() {
+  throw new Error('DNARest.EnableTheftProtectionLock() not implemented yet (Phase 3 Task 8)');
+};
+
+DNARest.prototype.DisableTheftProtectionLock = function DisableTheftProtectionLock() {
+  throw new Error('DNARest.DisableTheftProtectionLock() not implemented yet (Phase 3 Task 8)');
+};
+
+DNARest.prototype.CheckTransfer = function CheckTransfer() {
+  throw new Error('DNARest.CheckTransfer() not implemented yet (Phase 3 Task 8)');
 };
 
 // ---------------------------------------------------------------------------

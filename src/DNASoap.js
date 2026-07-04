@@ -1,5 +1,5 @@
 const soap = require('strong-soap').soap;
-const { SOAP_URL, VERSION } = require('./shared');
+const { SOAP_URL, VERSION, BUSINESS_METHODS, validateContact, isTrTLD } = require('./shared');
 
 class DNASoap {
   static VERSION = VERSION;
@@ -892,6 +892,70 @@ async GetList(extraParameters = {}) {
     }
   }
 
+}
+
+// ---------------------------------------------------------------------------
+// Phase 3 Task 3: Pure utility methods — delegate directly to shared functions.
+// Defined on the prototype so the skeleton loop below skips them.
+// ---------------------------------------------------------------------------
+
+/**
+ * Validate and normalise a contact object.
+ * Pure synchronous function — no network call, no Promise.
+ * Delegates to the shared validateContact() utility.
+ *
+ * @param {Object} contact
+ * @returns {Object} The mutated contact with defaults applied
+ */
+DNASoap.prototype.ValidateContact = function ValidateContact(contact) {
+  return validateContact(contact);
+};
+
+/**
+ * Return true if the domain ends with '.tr'.
+ * Pure synchronous function — no network call.
+ * Delegates to the shared isTrTLD() utility.
+ *
+ * @param {string} domain
+ * @returns {boolean}
+ */
+DNASoap.prototype.IsTrTLD = function IsTrTLD(domain) {
+  return isTrTLD(domain);
+};
+
+// ---------------------------------------------------------------------------
+// Phase 3 Task 3: Temporary skeletons for the 4 new API methods.
+// These are defined BEFORE the skeleton loop so the loop skips them.
+// Real implementations land in Phase 3 Task 8.
+// ---------------------------------------------------------------------------
+
+DNASoap.prototype.ModifyNameServer = function ModifyNameServer() {
+  throw new Error('DNASoap.ModifyNameServer() not implemented yet (Phase 3 Task 8)');
+};
+
+DNASoap.prototype.EnableTheftProtectionLock = function EnableTheftProtectionLock() {
+  throw new Error('DNASoap.EnableTheftProtectionLock() not implemented yet (Phase 3 Task 8)');
+};
+
+DNASoap.prototype.DisableTheftProtectionLock = function DisableTheftProtectionLock() {
+  throw new Error('DNASoap.DisableTheftProtectionLock() not implemented yet (Phase 3 Task 8)');
+};
+
+DNASoap.prototype.CheckTransfer = function CheckTransfer() {
+  throw new Error('DNASoap.CheckTransfer() not implemented yet (Phase 3 Task 8)');
+};
+
+// ---------------------------------------------------------------------------
+// Install skeletons for any BUSINESS_METHODS not yet defined on the prototype.
+// The loop only writes to names NOT already defined, so the real methods above
+// and those defined in the class body are never overwritten.
+// ---------------------------------------------------------------------------
+for (const name of BUSINESS_METHODS) {
+  if (!(name in DNASoap.prototype)) {
+    DNASoap.prototype[name] = function notImplemented() {
+      throw new Error(`DNASoap.${name}() is not implemented yet (Phase 2)`);
+    };
+  }
 }
 
 module.exports = DNASoap;
