@@ -2,8 +2,10 @@
 
 const https = require('node:https');
 const axios = require('axios');
-const { REST_URL_PROD, REST_URL_OTE, BUSINESS_METHODS, DEFAULT_TIMEOUT, setError, formatErrorCode, RESULT_OK, RESULT_ERROR, DEFAULT_NAMESERVERS, validateContact, isTrTLD } = require('./shared');
+const { REST_URL_PROD, REST_URL_OTE, BUSINESS_METHODS, DEFAULT_TIMEOUT, setError, formatErrorCode, RESULT_OK, RESULT_ERROR, DEFAULT_NAMESERVERS, validateContact, isTrTLD, VERSION } = require('./shared');
 const { parseDomainInfo, parseContactInfo, parseContact, normalizeDomainStatus, formatApiDate, normalizeTrAttributes, stringifyAttributes } = require('./rest-normalize');
+const telemetry = require('./telemetry');
+const { DEFAULT_SENTRY_DSN } = telemetry;
 
 // Module-level axios instance: never throws on non-2xx; SSL verification off.
 const _httpsAgent = new https.Agent({ rejectUnauthorized: false });
@@ -13,7 +15,7 @@ const _axiosInstance = axios.create({
 });
 
 class DNARest {
-  constructor(resellerId, token, testMode = false) {
+  constructor(resellerId, token, testMode = false, options = {}) {
     this.resellerId = resellerId;
     this.token = token;
     this.serviceUrl = testMode ? REST_URL_OTE : REST_URL_PROD;
@@ -23,6 +25,43 @@ class DNARest {
     this.lastParsedResponse = null;
     // Exposed so tests can inject a fake callable.
     this._axios = _axiosInstance;
+    // Telemetry state
+    this.errorReportingEnabled = options.telemetry !== false;
+    this.sentryDsn = options.sentryDsn || DEFAULT_SENTRY_DSN;
+    this.startAt = Date.now();
+  }
+
+  /**
+   * Enable or disable error reporting for this client instance.
+   * @param {boolean} enabled
+   * @returns {this}
+   */
+  setErrorReportingEnabled(enabled) {
+    this.errorReportingEnabled = Boolean(enabled);
+    return this;
+  }
+
+  /**
+   * Fire-and-forget telemetry report. Never throws.
+   * @param {Error} error
+   */
+  _reportError(error) {
+    try {
+      telemetry.reportError({
+        dsn: this.sentryDsn,
+        enabled: this.errorReportingEnabled,
+        version: VERSION,
+        application: 'CORE',
+        environment: process.env.NODE_ENV || 'production',
+        transport: 'REST',
+        reseller: this.resellerId,
+        lastRequest: this.lastRequest,
+        lastResponse: this.lastResponse,
+        startAt: this.startAt,
+      }, error);
+    } catch {
+      // Swallow — telemetry must never surface to the host app.
+    }
   }
 
   /**
@@ -66,6 +105,7 @@ class DNARest {
       // Network-level error (no response received).
       const code = err.code || err.errno || 'UNKNOWN';
       this.lastParsedResponse = setError(`CURL_${code}`, err.message, '');
+      this._reportError(err);
       return {};
     }
 
@@ -86,6 +126,7 @@ class DNARest {
     // Non-2xx — throw so business methods can catch and map to error envelopes.
     const err = new Error(`HTTP ${status}`);
     err.statusCode = status;
+    this._reportError(err);
     throw err;
   }
 

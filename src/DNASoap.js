@@ -2,15 +2,59 @@ const soap = require('strong-soap').soap;
 const { SOAP_URL, VERSION, BUSINESS_METHODS, validateContact, isTrTLD, setError, RESULT_OK, RESULT_ERROR, DEFAULT_NAMESERVERS } = require('./shared');
 const { parseSoapDomainInfo, parseSoapContactInfo } = require('./soap-normalize');
 const { normalizeDomainStatus, formatApiDate } = require('./rest-normalize');
+const telemetry = require('./telemetry');
+const { DEFAULT_SENTRY_DSN } = telemetry;
 
 class DNASoap {
   static VERSION = VERSION;
 
   constructor(
-      userName = 'ownername', password = 'ownerpass', testMode = false) {
+      userName = 'ownername', password = 'ownerpass', testMode = false, options = {}) {
     this.serviceUsername = userName;
     this.servicePassword = password;
     this.serviceUrl = SOAP_URL;
+    // Telemetry state
+    this.errorReportingEnabled = options.telemetry !== false;
+    this.sentryDsn = options.sentryDsn || DEFAULT_SENTRY_DSN;
+    this.startAt = Date.now();
+    // Request tracking (populated by callApiFunction)
+    this.lastRequest = null;
+    this.lastResponse = null;
+    this.lastFunction = null;
+  }
+
+  /**
+   * Enable or disable error reporting for this client instance.
+   * @param {boolean} enabled
+   * @returns {this}
+   */
+  setErrorReportingEnabled(enabled) {
+    this.errorReportingEnabled = Boolean(enabled);
+    return this;
+  }
+
+  /**
+   * Fire-and-forget telemetry report. Never throws.
+   * @param {Error} error
+   */
+  _reportError(error) {
+    try {
+      telemetry.reportError({
+        dsn: this.sentryDsn,
+        enabled: this.errorReportingEnabled,
+        version: VERSION,
+        application: 'CORE',
+        environment: process.env.NODE_ENV || 'production',
+        transport: 'SOAP',
+        reseller: this.serviceUsername,
+        lastRequest: this.lastRequest,
+        lastResponse: this.lastResponse,
+        lastFunction: this.lastFunction,
+        startAt: this.startAt,
+      }, error);
+    } catch {
+      // Swallow — telemetry must never surface to the host app.
+    }
   }
 
   createSoapClient() {
@@ -1050,6 +1094,9 @@ async GetTldList(count = 20) {
 
 
   async callApiFunction(apiFunctionName, parameters) {
+    // Track context for telemetry
+    this.lastFunction = apiFunctionName;
+    this.lastRequest = parameters;
     try {
       if (!this.soapClientPromise) {
         this.soapClientPromise = this.createSoapClient();
@@ -1060,7 +1107,7 @@ async GetTldList(count = 20) {
 
       // Dinamik olarak fonksiyon çağırma
       const result = await client[`${apiFunctionName}`](parameters);
-
+      this.lastResponse = result;
 
 
       // Derinlik ne olursa olsun ...Result anahtarını bulalım
@@ -1079,6 +1126,9 @@ async GetTldList(count = 20) {
         return {result: false, level: 'fatal', message: 'No data returned'};
       }
       if (data.faultcode) {
+        const faultErr = new Error(data.faultstring || 'SOAP Fault');
+        faultErr.faultcode = data.faultcode;
+        this._reportError(faultErr);
         return {result: false, level: 'fault', message: data.faultstring};
       }
 
@@ -1093,6 +1143,7 @@ async GetTldList(count = 20) {
 
     }
     catch (error) {
+      this._reportError(error instanceof Error ? error : new Error(String(error)));
       return {result: false, level: 'exception'};
     }
   }
