@@ -2,8 +2,9 @@
 
 const crypto = require('node:crypto');
 
-// TODO: set to the nodejs-dna Sentry DSN
-const DEFAULT_SENTRY_DSN = '';
+// nodejs-dna Sentry project (atakdomain). Override per-instance via the
+// constructor option `{ sentryDsn: '...' }`, or disable with `{ telemetry: false }`.
+const DEFAULT_SENTRY_DSN = 'https://5faf051d28b09b7983d0ab3edba23e2f@sentry.atakdomain.com/16';
 
 /**
  * Error message substrings that are high-volume expected noise and should not
