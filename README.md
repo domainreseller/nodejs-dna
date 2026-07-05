@@ -202,7 +202,7 @@ if (res.result === 'OK') {
 
 > **Note for `.tr` domains:** pass `additionalAttributes` as the 7th argument:
 > ```js
-> { TRABISDOMAINCATEGORY: '1', TRABISCITIZIENID: '12345678901', TRABISNAMESURNAME: 'John Doe', TRABISCOUNTRYID: '840', TRABISCITYID: '17' }
+> { TRABISDOMAINCATEGORY: '1', TRABISCITIZENID: '12345678901', TRABISNAMESURNAME: 'Ahmet Yilmaz', TRABISCOUNTRYID: '215', TRABISCITYID: '34' }
 > ```
 
 ---
@@ -233,10 +233,11 @@ if (res.result === 'OK') {
 }
 ```
 
-Pass extra parameters to filter or page:
+Pass extra parameters to page through the list (REST uses `MaxResultCount` / `SkipCount`):
 
 ```js
-const res = await api.GetList({ PageNumber: 0, PageSize: 100 });
+// second page of 100 results
+const res = await api.GetList({ MaxResultCount: 100, SkipCount: 100 });
 ```
 
 ---
@@ -358,7 +359,7 @@ if (res.result === 'OK') {
 
 | Method | Signature | Description |
 |--------|-----------|-------------|
-| `Transfer` | `(domainName, eppCode, period, contacts=[])` | Initiate an incoming transfer |
+| `Transfer` | `(domainName, eppCode, period, contacts=[])` | Initiate an incoming transfer (`contacts` is REST-only; SOAP ignores it) |
 | `CheckTransfer` | `(domainName, authcode)` | Check transferability with EPP code |
 | `ApproveTransfer` | `(domainName)` | Approve a pending outgoing transfer |
 | `CancelTransfer` | `(domainName)` | Cancel a pending incoming transfer |
@@ -376,7 +377,7 @@ if (res.result === 'OK') {
 | Method | Signature | Description |
 |--------|-----------|-------------|
 | `GetResellerDetails` | `()` | Reseller account info and balances; flat envelope (no `data` key) |
-| `GetCurrentBalance` | `(currencyId='USD')` | Current balance for a currency; flat balance envelope (no `result` key) |
+| `GetCurrentBalance` | `(currencyId='USD')` | Current balance for a currency (accepts `'USD'`, `'TRY'`, …); flat balance envelope (no `result` key) |
 
 ### Utilities (synchronous)
 
