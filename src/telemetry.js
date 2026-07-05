@@ -46,6 +46,54 @@ function parseDsn(dsn) {
 }
 
 // ---------------------------------------------------------------------------
+// Credential scrubber
+// ---------------------------------------------------------------------------
+
+/**
+ * Keys whose (lowercased) names contain sensitive credentials and must be
+ * redacted before sending to Sentry.
+ */
+const SENSITIVE_KEYS = new Set([
+  'password',
+  'pass',
+  'apipassword',
+  'servicepassword',
+  'token',
+  'authorization',
+  'x-api-key',
+  'apikey',
+  'secret',
+  'auth',
+]);
+
+/**
+ * Deep-clone `value` and replace every object property whose lowercased key
+ * matches SENSITIVE_KEYS with the string `'[redacted]'`.  Recurses into
+ * nested objects and arrays.  Primitives and null/undefined are returned
+ * as-is.  Never mutates the caller's data; never throws.
+ *
+ * @param {*} value
+ * @returns {*}
+ */
+function scrubSensitive(value) {
+  try {
+    if (value === null || value === undefined) return value;
+    if (typeof value !== 'object') return value;
+    if (Array.isArray(value)) {
+      return value.map(scrubSensitive);
+    }
+    const result = {};
+    for (const [k, v] of Object.entries(value)) {
+      result[k] = SENSITIVE_KEYS.has(k.toLowerCase()) ? '[redacted]' : scrubSensitive(v);
+    }
+    return result;
+  } catch {
+    // Defensive: if anything goes wrong, return value unchanged
+    return value;
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Internal helpers (mirrors php-dna buildCommonTags / buildSentryClassification)
 // ---------------------------------------------------------------------------
 
@@ -163,7 +211,7 @@ function _normalizeMessage(msg, tags, errorName) {
  */
 function _buildSentryClassification(error, context) {
   const tags = _buildCommonTags(error, context);
-  const msg = String(error.message || '');
+  const msg = String((error && error.message) || '');
 
   // ip_value is meaningful only when the error message itself names an IP
   const ipMatch = msg.match(/\b(\d{1,3}(?:\.\d{1,3}){3})\b/);
@@ -171,7 +219,7 @@ function _buildSentryClassification(error, context) {
     tags.ip_value = ipMatch[1];
   }
 
-  const value = _normalizeMessage(msg, tags, error.name || 'Error');
+  const value = _normalizeMessage(msg, tags, (error && error.name) || 'Error');
 
   return {
     value,
@@ -221,7 +269,7 @@ function buildSentryEvent(error, context) {
   const timestamp = new Date().toISOString().replace(/\.\d{3}Z$/, 'Z');
 
   // First meaningful stack frame for the stacktrace entry
-  const stackLines = (error.stack || '').split('\n');
+  const stackLines = ((error && error.stack) || '').split('\n');
   const firstAtLine = stackLines.find((l) => l.trim().startsWith('at ')) || '';
 
   const tags = {
@@ -250,7 +298,7 @@ function buildSentryEvent(error, context) {
     exception: {
       values: [
         {
-          type: error.name || 'Error',
+          type: (error && error.name) || 'Error',
           value: classification.value,
           stacktrace: {
             frames: [
@@ -266,9 +314,9 @@ function buildSentryEvent(error, context) {
     },
     tags,
     extra: {
-      request_data: context.lastRequest || {},
-      response_data: context.lastResponse || {},
-      original_message: error.message || '',
+      request_data: scrubSensitive(context.lastRequest || {}),
+      response_data: scrubSensitive(context.lastResponse || {}),
+      original_message: (error && error.message) || '',
     },
     fingerprint: classification.fingerprint,
   };
@@ -292,7 +340,9 @@ async function reportError(config, error) {
     const parsed = parseDsn(config.dsn);
     if (!parsed) return;
 
-    const msg = error && error.message ? String(error.message) : '';
+    if (!error) return;
+
+    const msg = error.message ? String(error.message) : '';
     for (const ignored of IGNORED_ERRORS) {
       if (msg.includes(ignored)) return;
     }
@@ -371,6 +421,7 @@ module.exports = {
   DEFAULT_SENTRY_DSN,
   IGNORED_ERRORS,
   parseDsn,
+  scrubSensitive,
   buildSentryEvent,
   reportError,
 };

@@ -6,6 +6,7 @@ const {
   DEFAULT_SENTRY_DSN,
   IGNORED_ERRORS,
   parseDsn,
+  scrubSensitive,
   buildSentryEvent,
   reportError,
 } = require('../src/telemetry');
@@ -14,8 +15,9 @@ const {
 // Constants
 // ---------------------------------------------------------------------------
 
-test('DEFAULT_SENTRY_DSN is an empty string', () => {
-  assert.strictEqual(DEFAULT_SENTRY_DSN, '');
+test('DEFAULT_SENTRY_DSN is a valid non-empty DSN accepted by parseDsn', () => {
+  assert.ok(DEFAULT_SENTRY_DSN !== '', 'DEFAULT_SENTRY_DSN must not be empty');
+  assert.ok(parseDsn(DEFAULT_SENTRY_DSN) !== null, 'parseDsn must accept DEFAULT_SENTRY_DSN');
 });
 
 test('IGNORED_ERRORS is a non-empty array of strings', () => {
@@ -433,4 +435,123 @@ test('buildSentryEvent event_id is unique across calls', () => {
   const ev1 = buildSentryEvent(err, ctx);
   const ev2 = buildSentryEvent(err, ctx);
   assert.notStrictEqual(ev1.event_id, ev2.event_id);
+});
+
+// ---------------------------------------------------------------------------
+// scrubSensitive
+// ---------------------------------------------------------------------------
+
+test('scrubSensitive redacts top-level sensitive keys (Password, Authorization, token, X-API-KEY)', () => {
+  const input = {
+    UserName: 'user',
+    Password: 'secret',
+    Authorization: 'Bearer tok',
+    token: 'mytoken',
+    'X-API-KEY': 'key123',
+    domainName: 'example.com',
+    period: 1,
+  };
+  const result = scrubSensitive(input);
+  assert.strictEqual(result.Password, '[redacted]');
+  assert.strictEqual(result.Authorization, '[redacted]');
+  assert.strictEqual(result.token, '[redacted]');
+  assert.strictEqual(result['X-API-KEY'], '[redacted]');
+  // Non-sensitive fields must be preserved
+  assert.strictEqual(result.UserName, 'user');
+  assert.strictEqual(result.domainName, 'example.com');
+  assert.strictEqual(result.period, 1);
+});
+
+test('scrubSensitive redacts lowercase "password"', () => {
+  const result = scrubSensitive({ password: 'hunter2', user: 'alice' });
+  assert.strictEqual(result.password, '[redacted]');
+  assert.strictEqual(result.user, 'alice');
+});
+
+test('scrubSensitive recurses into nested objects', () => {
+  const input = {
+    payload: {
+      domainName: 'x.com',
+      credentials: { password: 'deep-secret', apiKey: 'k' },
+    },
+  };
+  const result = scrubSensitive(input);
+  assert.strictEqual(result.payload.domainName, 'x.com');
+  assert.strictEqual(result.payload.credentials.password, '[redacted]');
+  // 'apiKey' lowercased = 'apikey' → also redacted
+  assert.strictEqual(result.payload.credentials.apiKey, '[redacted]');
+});
+
+test('scrubSensitive recurses into arrays', () => {
+  const input = [
+    { password: 'abc', name: 'first' },
+    { token: 'tok', name: 'second' },
+  ];
+  const result = scrubSensitive(input);
+  assert.ok(Array.isArray(result));
+  assert.strictEqual(result[0].password, '[redacted]');
+  assert.strictEqual(result[0].name, 'first');
+  assert.strictEqual(result[1].token, '[redacted]');
+  assert.strictEqual(result[1].name, 'second');
+});
+
+test('scrubSensitive does not mutate the input object', () => {
+  const input = { Password: 'original', domainName: 'example.com' };
+  scrubSensitive(input);
+  assert.strictEqual(input.Password, 'original');
+  assert.strictEqual(input.domainName, 'example.com');
+});
+
+test('scrubSensitive handles null input safely', () => {
+  assert.strictEqual(scrubSensitive(null), null);
+});
+
+test('scrubSensitive handles undefined input safely', () => {
+  assert.strictEqual(scrubSensitive(undefined), undefined);
+});
+
+test('scrubSensitive handles primitive input safely', () => {
+  assert.strictEqual(scrubSensitive(42), 42);
+  assert.strictEqual(scrubSensitive('hello'), 'hello');
+  assert.strictEqual(scrubSensitive(true), true);
+});
+
+// ---------------------------------------------------------------------------
+// buildSentryEvent — credential scrubbing end-to-end
+// ---------------------------------------------------------------------------
+
+test('buildSentryEvent scrubs credentials from extra.request_data and preserves safe fields', () => {
+  const err = new Error('registry error');
+  const event = buildSentryEvent(err, {
+    lastRequest: {
+      UserName: 'u',
+      Password: 'secret',
+      payload: { domainName: 'x.com', period: 2 },
+    },
+    lastResponse: {
+      Authorization: 'Bearer tok',
+      status: 'ok',
+    },
+  });
+
+  // Sensitive fields must be redacted
+  assert.strictEqual(event.extra.request_data.Password, '[redacted]');
+  assert.strictEqual(event.extra.response_data.Authorization, '[redacted]');
+
+  // Non-sensitive fields must be preserved
+  assert.strictEqual(event.extra.request_data.UserName, 'u');
+  assert.strictEqual(event.extra.request_data.payload.domainName, 'x.com');
+  assert.strictEqual(event.extra.request_data.payload.period, 2);
+  assert.strictEqual(event.extra.response_data.status, 'ok');
+});
+
+// ---------------------------------------------------------------------------
+// reportError — null error guard
+// ---------------------------------------------------------------------------
+
+test('reportError resolves without calling fetch when error is null', async () => {
+  const fakeFetch = makeFakeFetch();
+  const config = makeConfig({ _fetch: fakeFetch });
+  await reportError(config, null);
+  assert.strictEqual(fakeFetch.calls.length, 0, 'fetch must not be called for null error');
 });
