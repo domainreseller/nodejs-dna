@@ -57,6 +57,7 @@ class DNARest {
         reseller: this.resellerId,
         lastRequest: this.lastRequest,
         lastResponse: this.lastResponse,
+        lastFunction: this.lastFunction,
         startAt: this.startAt,
       }, error);
     } catch {
@@ -97,6 +98,9 @@ class DNARest {
     }
 
     this.lastRequest = { method, url, data };
+    // Operation label for telemetry grouping (REST has no business-method name
+    // at this layer; the verb+endpoint gives Sentry a stable per-endpoint bucket).
+    this.lastFunction = `${method} ${endpoint}`;
 
     let response;
     try {
