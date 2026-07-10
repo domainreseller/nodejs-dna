@@ -2,6 +2,18 @@
 
 Node.js client for the [Domain Name API](https://www.domainnameapi.com/) (domainnameapi.com) — a faithful JavaScript port of [php-dna](https://github.com/atakdomain/php-dna) with dual REST and SOAP transport support through a single unified facade.
 
+## 📦 Install
+
+```bash
+npm install nodejs-dna
+```
+
+Requires Node.js >= 16.
+
+Or download the latest tested package from **https://github.com/domainreseller/nodejs-dna/releases/latest**.
+
+> ⚠️ Do **not** use the green **Code → Download ZIP** button — that is the raw development branch, not a tested release.
+
 ## Features
 
 - **Dual transport, zero config** — UUID username routes to REST, any other username routes to SOAP, automatically
@@ -12,20 +24,12 @@ Node.js client for the [Domain Name API](https://www.domainnameapi.com/) (domain
 - **Error telemetry** — unexpected errors are reported to Sentry by default (opt-out available; credentials are never sent)
 - **Apache-2.0 license** — free for personal and commercial use
 
-## Install
-
-```bash
-npm install nodejs-dna
-```
-
-Requires Node.js >= 16.
-
 ## Quick start
 
 ```js
 const DomainNameApi = require('nodejs-dna');
 
-const api = new DomainNameApi('myusername', 'mypassword');
+const api = new DomainNameApi('your-api-username', 'your-api-password');
 
 const res = await api.GetResellerDetails();
 if (res.result === 'OK') {
@@ -38,11 +42,33 @@ The transport is chosen automatically. If your username is a UUID, the library u
 **REST transport (UUID username):**
 
 ```js
-const api = new DomainNameApi('fd2bea54-99ea-16b6-c195-3a1b9079df00', 'your-api-token');
+const api = new DomainNameApi('xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx', 'your-api-key');
 console.log(api.getActiveTransport()); // 'REST'
 
 const domains = await api.CheckAvailability(['hello', 'world'], ['com', 'net'], 1);
 ```
+
+## 🔑 API Credentials — Username/Password or Reseller ID/API Key?
+
+Both are supported — pass them to the same constructor; the client picks the right API automatically:
+
+| You have | First argument | Second argument | API used |
+|---|---|---|---|
+| **New panel credentials** (recommended) | Reseller ID — UUID like `xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx` | API Key | REST |
+| **Legacy credentials** | API username | API password | SOAP |
+
+```js
+// New panel credentials (Reseller ID + API Key) → REST transport
+const api = new DomainNameApi('xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx', 'your-api-key');
+
+// Legacy credentials (API username + password) → SOAP transport
+const api = new DomainNameApi('your-api-username', 'your-api-password');
+```
+
+> 💡 Find your **Reseller ID** and **API Key** in your DomainNameAPI panel under **API Settings**.
+> ⚠️ These are **API credentials** — your panel login e-mail and password will **not** work here.
+
+See [Transport routing](#transport-routing) for endpoint details.
 
 ## Constructor
 
