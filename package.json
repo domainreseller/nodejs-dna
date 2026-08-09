@@ -1,6 +1,6 @@
 {
   "name": "nodejs-dna",
-  "version": "3.0.0",
+  "version": "3.0.1",
   "description": "Node.js client for DomainNameAPI (domainnameapi.com) — manage domains, contacts and transfers over the modern REST API with automatic SOAP fallback.",
   "main": "index.js",
   "engines": {
