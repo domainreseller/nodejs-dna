@@ -1,6 +1,6 @@
 'use strict';
 
-const VERSION = '3.0.1';
+const VERSION = '3.0.2';
 const APPLICATION_NAME = 'DomainNameAPI-NodeJS';
 
 const SOAP_URL = 'https://whmcs.domainnameapi.com/DomainApi.svc?singlewsdl';
