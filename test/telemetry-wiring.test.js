@@ -1,7 +1,7 @@
 // test/telemetry-wiring.test.js
 //
-// Verifies that telemetry hooks are correctly wired into the REST and SOAP
-// transport cores, and that the facade's opt-out / backward-compat API works.
+// Verifies that telemetry hooks are correctly wired into the REST client
+// core, and that the facade's opt-out / backward-compat API works.
 //
 // NETWORK SAFETY: all tests either replace `client._reportError` with a spy
 // (bypassing `telemetry.reportError` entirely) or monkey-patch
@@ -13,7 +13,6 @@
 const assert = require('node:assert');
 const { test } = require('node:test');
 const DNARest = require('../src/DNARest');
-const DNASoap = require('../src/DNASoap');
 const DomainNameApi = require('../src/DomainNameApi');
 const telemetry = require('../src/telemetry');
 
@@ -29,16 +28,6 @@ function fakeAxiosStatus(status, data = null) {
 /** Fake axios that throws a network error. */
 function fakeAxiosThrow(message = 'Network failure') {
   return async () => { throw new Error(message); };
-}
-
-/**
- * Return a fake SOAP client whose `methodName` method throws when called.
- * Using a plain object (NOT a Proxy) so that Promise.resolve() does not
- * mistakenly treat it as a thenable (a Proxy with a catch-all `get` trap
- * intercepts the `then` property lookup and causes unhandled rejections).
- */
-function throwingSoapStubFor(methodName, message = 'SOAP network failure') {
-  return { [methodName]: async () => { throw new Error(message); } };
 }
 
 // ---------------------------------------------------------------------------
@@ -172,7 +161,6 @@ test('DNARest: telemetry.reportError receives enabled:false after setErrorReport
 
   assert.ok(capturedConfig !== null, 'telemetry.reportError should have been called');
   assert.strictEqual(capturedConfig.enabled, false, 'enabled must be false');
-  assert.strictEqual(capturedConfig.transport, 'REST');
 });
 
 test('DNARest: telemetry.reportError receives enabled:true by default', async () => {
@@ -196,97 +184,6 @@ test('DNARest: telemetry.reportError receives enabled:true by default', async ()
 });
 
 // ---------------------------------------------------------------------------
-// SOAP — constructor state
-// ---------------------------------------------------------------------------
-
-test('DNASoap: errorReportingEnabled defaults to true', () => {
-  const client = new DNASoap('u', 'p');
-  assert.strictEqual(client.errorReportingEnabled, true);
-});
-
-test('DNASoap: options.telemetry=false sets errorReportingEnabled to false', () => {
-  const client = new DNASoap('u', 'p', false, { telemetry: false });
-  assert.strictEqual(client.errorReportingEnabled, false);
-});
-
-test('DNASoap: setErrorReportingEnabled returns this', () => {
-  const client = new DNASoap('u', 'p');
-  const ret = client.setErrorReportingEnabled(false);
-  assert.strictEqual(client.errorReportingEnabled, false);
-  assert.strictEqual(ret, client);
-});
-
-// ---------------------------------------------------------------------------
-// SOAP — _reportError called when callApiFunction catches a thrown error
-// ---------------------------------------------------------------------------
-
-test('DNASoap: _reportError called when soapClientPromise rejects', async () => {
-  const client = new DNASoap('u', 'p');
-  let callCount = 0;
-  client._reportError = () => { callCount++; };
-
-  // Force the soap client creation to fail
-  client.soapClientPromise = Promise.reject(new Error('Cannot connect to SOAP'));
-
-  const result = await client.callApiFunction('GetDetails', { request: {} });
-
-  assert.strictEqual(callCount, 1, '_reportError must be called on soap client rejection');
-  assert.strictEqual(result.result, false);
-  assert.strictEqual(result.level, 'exception');
-});
-
-test('DNASoap: _reportError called when SOAP method call throws', async () => {
-  const client = new DNASoap('u', 'p');
-  let callCount = 0;
-  client._reportError = () => { callCount++; };
-
-  // Plain object (no Proxy) so Promise.resolve() does not treat it as a thenable
-  client.soapClientPromise = Promise.resolve(throwingSoapStubFor('GetDetails', 'SOAP method threw'));
-
-  const result = await client.callApiFunction('GetDetails', { request: {} });
-
-  assert.strictEqual(callCount, 1);
-  assert.strictEqual(result.result, false);
-  assert.strictEqual(result.level, 'exception');
-});
-
-test('DNASoap: _reportError called on fault response', async () => {
-  const client = new DNASoap('u', 'p');
-  let callCount = 0;
-  client._reportError = () => { callCount++; };
-
-  // Fake SOAP client that returns a SOAP fault
-  const fakeSoapClient = {
-    GetDetails: async () => ({
-      GetDetailsResult: { faultcode: 'env:Client', faultstring: 'Access denied' },
-    }),
-  };
-  client.soapClientPromise = Promise.resolve(fakeSoapClient);
-
-  const result = await client.callApiFunction('GetDetails', { request: {} });
-
-  assert.strictEqual(callCount, 1, '_reportError must be called on SOAP fault');
-  assert.strictEqual(result.result, false);
-  assert.strictEqual(result.level, 'fault');
-});
-
-// ---------------------------------------------------------------------------
-// SOAP — callApiFunction tracks lastFunction / lastRequest
-// ---------------------------------------------------------------------------
-
-test('DNASoap: callApiFunction sets lastFunction and lastRequest', async () => {
-  const client = new DNASoap('u', 'p');
-  client._reportError = () => {};
-
-  client.soapClientPromise = Promise.resolve(throwingSoapStubFor('MyOperation'));
-
-  await client.callApiFunction('MyOperation', { request: { DomainName: 'example.com' } });
-
-  assert.strictEqual(client.lastFunction, 'MyOperation');
-  assert.deepStrictEqual(client.lastRequest, { request: { DomainName: 'example.com' } });
-});
-
-// ---------------------------------------------------------------------------
 // Facade — backward compat with boolean 3rd arg
 // ---------------------------------------------------------------------------
 
@@ -297,19 +194,14 @@ test('DomainNameApi: boolean true as 3rd arg still routes correctly (backward co
 });
 
 test('DomainNameApi: boolean false as 3rd arg backward compat', () => {
-  const api = new DomainNameApi('ownername', 'pass', false);
-  assert.strictEqual(api.getActiveTransport(), 'SOAP');
+  const api = new DomainNameApi('ownername', 'key', false);
+  assert.strictEqual(api.getActiveTransport(), 'REST');
   assert.strictEqual(api.client.errorReportingEnabled, true); // default
 });
 
 // ---------------------------------------------------------------------------
 // Facade — options object as 3rd arg
 // ---------------------------------------------------------------------------
-
-test('DomainNameApi: {telemetry:false} disables reporting on SOAP client', () => {
-  const api = new DomainNameApi('ownername', 'pass', { telemetry: false });
-  assert.strictEqual(api.client.errorReportingEnabled, false);
-});
 
 test('DomainNameApi: {telemetry:false} disables reporting on REST client', () => {
   const api = new DomainNameApi('550e8400-e29b-41d4-a716-446655440000', 'token', { telemetry: false });
@@ -327,7 +219,7 @@ test('DomainNameApi: {testMode:true} still routes with correct transport', () =>
 // ---------------------------------------------------------------------------
 
 test('DomainNameApi: setErrorReportingEnabled(false) flips the client flag', () => {
-  const api = new DomainNameApi('ownername', 'pass');
+  const api = new DomainNameApi('550e8400-e29b-41d4-a716-446655440000', 'token');
   assert.strictEqual(api.client.errorReportingEnabled, true);
   const ret = api.setErrorReportingEnabled(false);
   assert.strictEqual(api.client.errorReportingEnabled, false);
@@ -335,7 +227,7 @@ test('DomainNameApi: setErrorReportingEnabled(false) flips the client flag', () 
 });
 
 test('DomainNameApi: setErrorReportingEnabled(true) re-enables', () => {
-  const api = new DomainNameApi('ownername', 'pass', { telemetry: false });
+  const api = new DomainNameApi('550e8400-e29b-41d4-a716-446655440000', 'token', { telemetry: false });
   assert.strictEqual(api.client.errorReportingEnabled, false);
   api.setErrorReportingEnabled(true);
   assert.strictEqual(api.client.errorReportingEnabled, true);

@@ -2,8 +2,8 @@
  * Canlı test runner — GERÇEK kimlik bilgilerinle çalışır.
  *
  * Kullanım:
- *   DNA_USER='kullanici' DNA_PASS='sifre' node test/live.js
- *   DNA_USER='550e8400-...uuid...' DNA_PASS='api-token' DNA_TEST=1 node test/live.js   (REST + OTE)
+ *   DNA_RESELLER_ID='550e8400-...reseller-id...' DNA_API_KEY='api-key' node test/live.js
+ *   DNA_RESELLER_ID='550e8400-...reseller-id...' DNA_API_KEY='api-key' DNA_TEST=1 node test/live.js   (OTE)
  *
  * Sadece OKUMA yapan / para harcamayan metotları çağırır.
  * Para harcayan / değiştiren metotlar (Register, Renew, Transfer, SaveContacts...)
@@ -11,12 +11,12 @@
  */
 const DomainNameApi = require('../index');
 
-const USER = process.env.DNA_USER || 'ownername';
-const PASS = process.env.DNA_PASS || 'ownerpass';
-const TEST = process.env.DNA_TEST === '1'; // REST için OTE ortamı
+const RESELLER_ID = process.env.DNA_RESELLER_ID || 'xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx';
+const API_KEY = process.env.DNA_API_KEY || 'your-api-key';
+const TEST = process.env.DNA_TEST === '1'; // OTE ortamı
 const DOMAIN = process.env.DNA_DOMAIN || 'bnyx-3c596887.site'; // GetDetails/GetContacts için sahip olduğun bir domain
 
-const api = new DomainNameApi(USER, PASS, TEST);
+const api = new DomainNameApi(RESELLER_ID, API_KEY, TEST);
 
 const DELAY_MS = Number(process.env.DNA_DELAY || 1000); // testler arası bekleme (ms)
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));

@@ -102,7 +102,7 @@ test('parseContactInfo returns {} on empty input', () => {
 // ---------------------------------------------------------------------------
 // parseContact
 // ---------------------------------------------------------------------------
-test('parseContact maps SOAP-style contact to REST API body', () => {
+test('parseContact maps PascalCase contact to REST API body', () => {
   const contact = {
     FirstName: 'Jane', LastName: 'Smith', Company: 'Corp',
     EMail: 'jane@corp.com', AddressLine1: '10 Elm St',

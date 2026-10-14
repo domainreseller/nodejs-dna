@@ -50,11 +50,11 @@ docker-compose down
 - ✅ Docker image başarıyla build edildi
 - ✅ Container başarıyla çalıştı
 - ✅ API bağlantısı kuruldu
-- ✅ SOAP client oluşturuldu
+- ✅ REST client oluşturuldu
 - ✅ Test scriptleri çalıştı
 
 ### ⚠️ Beklenen Hatalar
-- `Reseller not found!` - Test kullanıcı adı/şifre kullanıldığı için normal
+- `Reseller not found!` - Örnek Reseller ID / API Key kullanıldığı için normal
 - `Cannot read properties of null` - API kimlik bilgileri olmadığı için normal
 
 ## 🔧 Yapılandırma

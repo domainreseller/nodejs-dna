@@ -1,7 +1,7 @@
 const DomainNameAPI = require('./index');
 
 // Create an instance of your API class
-const api = new DomainNameAPI('user','pass');
+const api = new DomainNameAPI('xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx', 'your-api-key');
 
 const contacts = {
   Administrative: {

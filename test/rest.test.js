@@ -8,7 +8,7 @@ test('DNARest selects OTE base URL in test mode', () => {
   assert.strictEqual(new DNARest('id', 'tok', false).serviceUrl, REST_URL_PROD);
 });
 
-test('DNARest exposes the same method surface as DNASoap', () => {
+test('DNARest exposes the business method surface', () => {
   const c = new DNARest('id', 'tok');
   // GetResellerDetails is now implemented (Task 5) — must return a Promise, not throw.
   assert.strictEqual(typeof c.GetResellerDetails, 'function');

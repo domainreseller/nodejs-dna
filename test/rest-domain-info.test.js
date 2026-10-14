@@ -129,7 +129,7 @@ const CANNED_CONTACTS_RESPONSE = {
   ],
 };
 
-test('GetContacts maps contacts with correct SOAP keys', async () => {
+test('GetContacts maps contacts with correct PascalCase keys', async () => {
   const c = new DNARest('r', 't');
   c.request = async (verb, ep, data) => {
     assert.strictEqual(verb, 'GET');

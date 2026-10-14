@@ -316,9 +316,9 @@ function parseContactIds(contacts) {
   };
   for (const c of contacts) {
     const apiType = c.ContactType || c.contactType || '';
-    const soapKey = typeMap[apiType] || null;
-    if (soapKey) {
-      result[soapKey].ID = c.handle !== undefined ? c.handle : (c.id !== undefined ? c.id : 0);
+    const outKey = typeMap[apiType] || null;
+    if (outKey) {
+      result[outKey].ID = c.handle !== undefined ? c.handle : (c.id !== undefined ? c.id : 0);
     }
   }
   return result;
@@ -375,7 +375,7 @@ function parseContactInfo(data) {
 // PHP: DNARest.php lines 1730–1776
 // ---------------------------------------------------------------------------
 /**
- * Convert inbound SOAP-style contact array to REST API request body.
+ * Convert inbound PascalCase contact array to REST API request body.
  *
  * @param {Object} contact
  * @param {string} type

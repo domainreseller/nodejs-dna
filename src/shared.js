@@ -3,17 +3,8 @@
 const VERSION = '3.0.2';
 const APPLICATION_NAME = 'DomainNameAPI-NodeJS';
 
-const SOAP_URL = 'https://whmcs.domainnameapi.com/DomainApi.svc?singlewsdl';
 const REST_URL_PROD = 'https://api.domainresellerapi.com/api/v1';
 const REST_URL_OTE = 'https://ote.domainresellerapi.com/api/v1';
-
-// UUID username → REST; anything else → SOAP. Trim first so a copy-pasted,
-// space-padded UUID still routes to REST (parity with php-dna).
-function looksLikeUuid(value) {
-  return /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/.test(
-    String(value).trim(),
-  );
-}
 
 // Single source of truth for the public PascalCase method surface. DNARest
 // (Task 3) and the facade (Task 4) both build their delegations from this list.
@@ -50,7 +41,7 @@ const DEFAULT_ERRORS = {
   },
   CREDENTIALS: {
     code: 'CREDENTIALS',
-    message: 'Invalid username and password',
+    message: 'Invalid reseller ID or API key',
     description: 'The provided API credentials are invalid',
   },
   DOMAIN_LIST: {
@@ -82,11 +73,6 @@ const DEFAULT_ERRORS = {
     code: 'RESPONSE_CODE',
     message: 'Invalid parameters passed to function! Operation result or Error code not received from server',
     description: 'The API response is missing required operation result or error code fields',
-  },
-  RESPONSE_SOAP: {
-    code: 'RESPONSE_SOAP',
-    message: 'Invalid parameters passed to function! Soap return is not a valid array!',
-    description: 'The SOAP response is not in a valid array format',
   },
   RESPONSE_REST: {
     code: 'RESPONSE_REST',
@@ -126,16 +112,14 @@ const DEFAULT_ERRORS = {
 };
 
 // ---------------------------------------------------------------------------
-// isTrTLD — ported from DNARest.php lines 1783–1786 (REST version, simpler).
-// SOAP version (lines 1859–1864) is equivalent: preg_match('/\.tr$/', domain).
+// isTrTLD — ported from DNARest.php lines 1783–1786.
 // ---------------------------------------------------------------------------
 function isTrTLD(domain) {
   return String(domain).toLowerCase().endsWith('.tr');
 }
 
 // ---------------------------------------------------------------------------
-// validateContact — ported verbatim from DNASoap.php lines 1785–1850 /
-// DNARest.php lines 1844–1909 (code is byte-for-byte identical in both).
+// validateContact — ported verbatim from DNARest.php lines 1844–1909.
 // Fills missing / empty fields with Turkish-locale defaults and normalises
 // the phone number. Returns the mutated contact object — never errors.
 // ---------------------------------------------------------------------------
@@ -222,7 +206,7 @@ function setError(code, message = '', details = '') {
 }
 
 module.exports = {
-  VERSION, APPLICATION_NAME, SOAP_URL, REST_URL_PROD, REST_URL_OTE, looksLikeUuid, BUSINESS_METHODS,
+  VERSION, APPLICATION_NAME, REST_URL_PROD, REST_URL_OTE, BUSINESS_METHODS,
   RESULT_OK, RESULT_ERROR, RESULT_SUCCESS,
   DEFAULT_TIMEOUT, DEFAULT_NAMESERVERS, DEFAULT_REASON,
   DOMAIN_STATUS_MAP, DEFAULT_ERRORS,

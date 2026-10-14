@@ -1,6 +1,6 @@
 # nodejs-dna
 
-Node.js client for the [Domain Name API](https://www.domainnameapi.com/) (domainnameapi.com) — a faithful JavaScript port of [php-dna](https://github.com/atakdomain/php-dna) with dual REST and SOAP transport support through a single unified facade.
+Node.js client for the [Domain Name API](https://www.domainnameapi.com/) (domainnameapi.com) — a faithful JavaScript port of [php-dna](https://github.com/atakdomain/php-dna) built on the DomainNameAPI REST API.
 
 ## 📦 Install
 
@@ -16,9 +16,9 @@ Or download the latest tested package from **https://github.com/domainreseller/n
 
 ## Features
 
-- **Dual transport, zero config** — UUID username routes to REST, any other username routes to SOAP, automatically
+- **REST API** — authenticate with your Reseller ID and API Key
 - **25 API methods** covering registration, renewal, transfer, contacts, nameservers, and account management
-- **Unified return envelope** — consistent `{ result: 'OK', data: {...} }` / `{ result: 'ERROR', error: {...} }` across both transports
+- **Unified return envelope** — consistent `{ result: 'OK', data: {...} }` / `{ result: 'ERROR', error: {...} }` across all methods
 - **Promise-based** — all network methods are `async` and return Promises; `ValidateContact` and `IsTrTLD` are synchronous utilities
 - **OTE / test mode** — a single flag switches to the REST sandbox endpoint
 - **Error telemetry** — unexpected errors are reported to Sentry by default (opt-out available; credentials are never sent)
@@ -29,57 +29,35 @@ Or download the latest tested package from **https://github.com/domainreseller/n
 ```js
 const DomainNameApi = require('nodejs-dna');
 
-const api = new DomainNameApi('your-api-username', 'your-api-password');
+const api = new DomainNameApi('xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx', 'your-api-key');
 
 const res = await api.GetResellerDetails();
 if (res.result === 'OK') {
   console.log(res.name, res.balance, res.currency);
 }
-```
-
-The transport is chosen automatically. If your username is a UUID, the library uses the REST API. Otherwise it uses SOAP. See [Transport routing](#transport-routing) below.
-
-**REST transport (UUID username):**
-
-```js
-const api = new DomainNameApi('xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx', 'your-api-key');
-console.log(api.getActiveTransport()); // 'REST'
 
 const domains = await api.CheckAvailability(['hello', 'world'], ['com', 'net'], 1);
 ```
 
-## 🔑 API Credentials — Username/Password or Reseller ID/API Key?
+## 🔑 API Credentials — Reseller ID + API Key
 
-Both are supported — pass them to the same constructor; the client picks the right API automatically:
-
-| You have | First argument | Second argument | API used |
-|---|---|---|---|
-| **New panel credentials** (recommended) | Reseller ID — UUID like `xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx` | API Key | REST |
-| **Legacy credentials** | API username | API password | SOAP |
-
-```js
-// New panel credentials (Reseller ID + API Key) → REST transport
-const api = new DomainNameApi('xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx', 'your-api-key');
-
-// Legacy credentials (API username + password) → SOAP transport
-const api = new DomainNameApi('your-api-username', 'your-api-password');
-```
+| First argument | Second argument |
+|---|---|
+| Reseller ID — UUID like `xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx` | API Key |
 
 > 💡 Find your **Reseller ID** and **API Key** in your DomainNameAPI panel under **API Settings**.
-> ⚠️ These are **API credentials** — your panel login e-mail and password will **not** work here.
-
-See [Transport routing](#transport-routing) for endpoint details.
+> ⚠️ These are **API credentials** — your panel login credentials will **not** work here.
 
 ## Constructor
 
 ```js
-new DomainNameApi(userName, password, optionsOrTestMode = false)
+new DomainNameApi(resellerId, apiKey, optionsOrTestMode = false)
 ```
 
 | Parameter            | Type               | Description |
 |---------------------|--------------------|-------------|
-| `userName`          | string             | API username (regular string → SOAP; UUID format → REST) |
-| `password`          | string             | API password or token |
+| `resellerId`        | string             | Reseller ID (UUID) |
+| `apiKey`            | string             | API Key |
 | `optionsOrTestMode` | boolean \| object  | `true` as legacy shorthand for test mode, or an options object |
 
 **Options object:**
@@ -96,26 +74,22 @@ Examples:
 
 ```js
 // Legacy boolean form — still works
-const api = new DomainNameApi('uuid-...', 'token', true);
+const api = new DomainNameApi('reseller-id-uuid', 'api-key', true);
 
 // Options object — preferred for v3
-const api = new DomainNameApi('uuid-...', 'token', { testMode: true, telemetry: false });
+const api = new DomainNameApi('reseller-id-uuid', 'api-key', { testMode: true, telemetry: false });
 ```
 
-## Transport routing
+## Endpoints
 
-Transport is selected once at construction time based on the username:
+| Mode | Endpoint |
+|------|----------|
+| Production | `api.domainresellerapi.com/api/v1` |
+| Test (OTE) | `ote.domainresellerapi.com/api/v1` |
 
-| Username format | Transport | Endpoint |
-|----------------|-----------|----------|
-| UUID (`xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx`) | REST | `api.domainresellerapi.com/api/v1` |
-| Anything else | SOAP | `whmcs.domainnameapi.com/DomainApi.svc` |
+`api.getActiveTransport()` is kept for backward compatibility and always returns `'REST'`.
 
-```js
-api.getActiveTransport(); // → 'REST' or 'SOAP'
-```
-
-Both transports expose the same 25 method names through the same facade class. Most methods return the same envelope shape regardless of transport; the few exceptions are listed in the table below.
+All 25 methods are exposed through the same facade class. Most methods return the standard envelope shape; the few exceptions are listed in the table below.
 
 ## Return envelope
 
@@ -156,14 +130,12 @@ if (res.result === 'OK') {
 
 A few methods intentionally deviate from the standard shape, matching the php-dna contract exactly:
 
-| Method | Transport | Envelope |
-|--------|-----------|---------|
-| `GetResellerDetails` | both | `{ result:'OK', id, active, name, balance, currency, symbol, balances }` — flat, no `data` key |
-| `GetCurrentBalance` | both | `{ OperationResult:'SUCCESS'\|'FAILED', Balance, CurrencyId, CurrencyName, CurrencySymbol, ... }` — no `result` key |
-| `CheckAvailability` | both | Bare **array** of availability objects on success |
-| `SaveContacts` | SOAP only | `{ result:'OK' }` — no `data` key (REST returns `{ result:'OK', data:{ contacts:{...} } }`) |
-| `CheckTransfer` | SOAP only | `{ result:'OK' }` or `{ result:'ERROR' }` — bare (REST returns a richer `data` object) |
-| `ApproveTransfer`, `CancelTransfer`, `RejectTransfer` | both | `{ result:'OK', data:{ DomainName, Status } }` |
+| Method | Envelope |
+|--------|---------|
+| `GetResellerDetails` | `{ result:'OK', id, active, name, balance, currency, symbol, balances }` — flat, no `data` key |
+| `GetCurrentBalance` | `{ OperationResult:'SUCCESS'\|'FAILED', Balance, CurrencyId, CurrencyName, CurrencySymbol, ... }` — no `result` key |
+| `CheckAvailability` | Bare **array** of availability objects on success |
+| `ApproveTransfer`, `CancelTransfer`, `RejectTransfer` | `{ result:'OK', data:{ DomainName, Status } }` |
 
 ## Common examples
 
@@ -259,7 +231,7 @@ if (res.result === 'OK') {
 }
 ```
 
-Pass extra parameters to page through the list (REST uses `MaxResultCount` / `SkipCount`):
+Pass extra parameters to page through the list (`MaxResultCount` / `SkipCount`):
 
 ```js
 // second page of 100 results
@@ -309,7 +281,7 @@ if (saveRes.result === 'OK') {
 }
 ```
 
-> **Transport note:** SOAP `SaveContacts` returns `{ result:'OK' }` with no `data` key. REST returns `{ result:'OK', data:{ contacts:{...} } }`.
+`SaveContacts` returns `{ result:'OK', data:{ contacts:{...} } }` on success.
 
 ---
 
@@ -385,7 +357,7 @@ if (res.result === 'OK') {
 
 | Method | Signature | Description |
 |--------|-----------|-------------|
-| `Transfer` | `(domainName, eppCode, period, contacts=[])` | Initiate an incoming transfer (`contacts` is REST-only; SOAP ignores it) |
+| `Transfer` | `(domainName, eppCode, period, contacts=[])` | Initiate an incoming transfer |
 | `CheckTransfer` | `(domainName, authcode)` | Check transferability with EPP code |
 | `ApproveTransfer` | `(domainName)` | Approve a pending outgoing transfer |
 | `CancelTransfer` | `(domainName)` | Cancel a pending incoming transfer |
@@ -438,7 +410,7 @@ if (res.result === 'OK') {
 
 | Code | Meaning |
 |------|---------|
-| `CREDENTIALS` | Invalid username or password |
+| `CREDENTIALS` | Invalid Reseller ID or API Key |
 | `DOMAIN_DETAILS` | Domain not found or details format invalid |
 | `DOMAIN_RENEW` | Renewal failed (domain may not be renewable) |
 | `DOMAIN_REGISTER` | Registration failed |
@@ -461,14 +433,14 @@ To help diagnose unexpected API failures, this library reports errors to a Sentr
 - Node.js version and library version
 
 **What is never sent:**
-- Your password or API token — these are scrubbed from all payloads before transmission
+- Your API Key — credentials are scrubbed from all payloads before transmission
 - Domain names and reseller IDs are tagged (filterable) but not included in error grouping keys
 
 **How to opt out:**
 
 ```js
 // At construction time (preferred)
-const api = new DomainNameApi('username', 'password', { telemetry: false });
+const api = new DomainNameApi('reseller-id-uuid', 'api-key', { telemetry: false });
 
 // Or at any time after construction
 api.setErrorReportingEnabled(false);
@@ -478,18 +450,16 @@ Telemetry transmission always happens in the background and never throws or reje
 
 ## Test mode (OTE)
 
-The REST transport supports a sandbox (OTE) environment:
+The library supports a sandbox (OTE) environment:
 
 ```js
 // Boolean shorthand
-const api = new DomainNameApi('uuid-reseller-id', 'token', true);
+const api = new DomainNameApi('reseller-id-uuid', 'api-key', true);
 
 // Options object
-const api = new DomainNameApi('uuid-reseller-id', 'token', { testMode: true });
+const api = new DomainNameApi('reseller-id-uuid', 'api-key', { testMode: true });
 // → uses https://ote.domainresellerapi.com/api/v1
 ```
-
-`testMode` applies only to the REST transport. The SOAP transport always connects to the production endpoint.
 
 ## Version
 
@@ -508,7 +478,7 @@ Pull requests are welcome. Please open an issue first to discuss what you would 
 Run the test suite:
 
 ```bash
-node --test test/
+node --test test/*.test.js
 ```
 
 ## License

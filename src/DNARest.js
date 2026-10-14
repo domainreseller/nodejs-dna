@@ -53,7 +53,6 @@ class DNARest {
         version: VERSION,
         application: 'CORE',
         environment: process.env.NODE_ENV || 'production',
-        transport: 'REST',
         reseller: this.resellerId,
         lastRequest: this.lastRequest,
         lastResponse: this.lastResponse,
@@ -204,10 +203,10 @@ DNARest.prototype.GetContacts = async function GetContacts(domainName) {
     if (Array.isArray(domainInfo.contacts)) {
       for (const contactItem of domainInfo.contacts) {
         const apiType = contactItem.contactType || '';
-        const soapKey = typeMap[apiType] !== undefined
+        const outKey = typeMap[apiType] !== undefined
           ? typeMap[apiType]
           : (apiType.charAt(0).toUpperCase() + apiType.slice(1).toLowerCase());
-        contacts[soapKey] = parseContactInfo(Object.assign({}, contactItem, { type: soapKey }));
+        contacts[outKey] = parseContactInfo(Object.assign({}, contactItem, { type: outKey }));
       }
     }
 
@@ -284,7 +283,7 @@ const _CURRENCY_MAP = {
 /**
  * Get current balance for the given currency.
  * GET deposit/accounts/me {currency: <UPPERCASED>}
- * Returns a DISTINCT envelope (not {result:'OK'}), matching SOAP parity.
+ * Returns a DISTINCT envelope (not {result:'OK'}).
  * PHP lines 561–603.
  *
  * number_format(x, 2, '.', '') → JS: parseFloat(x || 0).toFixed(2)
@@ -539,7 +538,7 @@ DNARest.prototype.GetTldList = async function GetTldList(count = 20) {
           }
         }
 
-        // Sort pricing by period key numerically (SOAP ascending order)
+        // Sort pricing by period key numerically (ascending)
         for (const outType of Object.keys(pricing)) {
           const sorted = {};
           for (const k of Object.keys(pricing[outType]).map(Number).sort((a, b) => a - b)) {
@@ -1116,7 +1115,7 @@ DNARest.prototype.IsTrTLD = function IsTrTLD(domain) {
  *
  * nameServers is passed through array_values() (PHP parity — re-index).
  * Response: uses response.nameServers ?? nameServers (PHP line 849).
- * Envelope matches SOAP ModifyNameServer: {result:'OK', data:{NameServers:[...]}}.
+ * Envelope: {result:'OK', data:{NameServers:[...]}}.
  *
  * @param {string}   domainName
  * @param {string[]} nameServers  New nameserver list (re-indexed)
@@ -1149,7 +1148,7 @@ DNARest.prototype.ModifyNameServer = async function ModifyNameServer(domainName,
  * PHP: DNARest.php lines 866–885 (B2).
  *
  * Response body is ignored; LockStatus: true is hard-coded (matches PHP line 875).
- * Envelope matches SOAP EnableTheftProtectionLock: {result:'OK', data:{LockStatus:true}}.
+ * Envelope: {result:'OK', data:{LockStatus:true}}.
  *
  * @param {string} domainName
  */
@@ -1177,7 +1176,7 @@ DNARest.prototype.EnableTheftProtectionLock = async function EnableTheftProtecti
  * PHP: DNARest.php lines 887–910 (B3).
  *
  * Response body is ignored; LockStatus: false is hard-coded (matches PHP line 898).
- * Envelope matches SOAP DisableTheftProtectionLock: {result:'OK', data:{LockStatus:false}}.
+ * Envelope: {result:'OK', data:{LockStatus:false}}.
  *
  * @param {string} domainName
  */
@@ -1204,11 +1203,8 @@ DNARest.prototype.DisableTheftProtectionLock = async function DisableTheftProtec
  * POST domains/transfers/check {domainName, authCode}
  * PHP: DNARest.php lines 1799–1836 (B4).
  *
- * TRANSPORT DIFFERENCE vs SOAP:
- *   REST returns a richer envelope with TransferAvailabilityStatus and related
- *   fields. SOAP returns bare {result:'OK'} or {result:'ERROR'}.
- *   Both transports set result:'OK' when transferAvailabilityStatus is truthy,
- *   and result:'ERROR' otherwise.
+ * Returns an envelope with TransferAvailabilityStatus and related fields;
+ *   result:'OK' when transferAvailabilityStatus is truthy, result:'ERROR' otherwise.
  *
  * On unavailability: adds error key with TRANSFER_NOT_AVAILABLE code (PHP line 1822).
  *

@@ -77,7 +77,7 @@ test('ModifyNameServer: falls back to input nameServers when response.nameServer
   assert.deepStrictEqual(out.data.NameServers, ['ns1.example.com', 'ns2.example.com']);
 });
 
-test('ModifyNameServer: success envelope matches SOAP ModifyNameServer shape (same data.NameServers key)', async () => {
+test('ModifyNameServer: success envelope has data.NameServers', async () => {
   const c   = makeRest({});
   const out = await c.ModifyNameServer('example.com', ['ns1.example.com']);
   assert.ok('result' in out);
@@ -142,7 +142,7 @@ test('EnableTheftProtectionLock: success envelope has LockStatus:true (hard-code
   assert.ok(!('error' in out), 'no error key on success');
 });
 
-test('EnableTheftProtectionLock: success envelope matches SOAP EnableTheftProtectionLock shape', async () => {
+test('EnableTheftProtectionLock: success envelope has data.LockStatus=true', async () => {
   const c   = makeRest({});
   const out = await c.EnableTheftProtectionLock('example.com');
   assert.ok('result' in out);
@@ -205,7 +205,7 @@ test('DisableTheftProtectionLock: success envelope has LockStatus:false (hard-co
   assert.ok(!('error' in out), 'no error key on success');
 });
 
-test('DisableTheftProtectionLock: success envelope matches SOAP DisableTheftProtectionLock shape', async () => {
+test('DisableTheftProtectionLock: success envelope has data.LockStatus=false', async () => {
   const c   = makeRest({});
   const out = await c.DisableTheftProtectionLock('example.com');
   assert.ok('result' in out);

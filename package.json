@@ -1,7 +1,7 @@
 {
   "name": "nodejs-dna",
   "version": "3.0.2",
-  "description": "Node.js client for DomainNameAPI (domainnameapi.com) — manage domains, contacts and transfers over the modern REST API with automatic SOAP fallback.",
+  "description": "Node.js client for DomainNameAPI (domainnameapi.com) — manage domains, contacts and transfers over the DomainNameAPI REST API.",
   "main": "index.js",
   "engines": {
     "node": ">=16"
@@ -33,7 +33,6 @@
     "domains",
     "registrar",
     "whmcs",
-    "soap",
     "reseller",
     "rest",
     "rest-api",
@@ -43,7 +42,6 @@
   "author": "Atak Domain",
   "license": "Apache-2.0",
   "dependencies": {
-    "axios": "^1.7.7",
-    "strong-soap": "^4.1.4"
+    "axios": "^1.7.7"
   }
 }

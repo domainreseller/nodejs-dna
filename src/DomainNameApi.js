@@ -1,51 +1,48 @@
 'use strict';
 
-const { looksLikeUuid, VERSION, BUSINESS_METHODS } = require('./shared');
-const DNASoap = require('./DNASoap');
+const { VERSION, BUSINESS_METHODS } = require('./shared');
 const DNARest = require('./DNARest');
 
 class DomainNameApi {
   static VERSION = VERSION;
 
   /**
-   * @param {string} userName
-   * @param {string} password
+   * @param {string} resellerId  Reseller ID (UUID)
+   * @param {string} apiKey      API Key
    * @param {boolean|{ testMode?: boolean, telemetry?: boolean, sentryDsn?: string }} [optionsOrTestMode=false]
    *   Passing a boolean is legacy shorthand for `{ testMode: <value> }`.
    */
-  constructor(userName = 'ownername', password = 'ownerpass', optionsOrTestMode = false) {
-    userName = String(userName).trim();
-    password = String(password).trim();
+  constructor(resellerId = '', apiKey = '', optionsOrTestMode = false) {
+    resellerId = String(resellerId).trim();
+    apiKey = String(apiKey).trim();
 
     let testMode = false;
     let options = {};
 
     if (typeof optionsOrTestMode === 'boolean') {
-      // Legacy positional: new DomainNameApi('u', 'p', true)
+      // Legacy positional: new DomainNameApi(resellerId, apiKey, true)
       testMode = optionsOrTestMode;
     } else if (optionsOrTestMode !== null && typeof optionsOrTestMode === 'object') {
-      // Options object: new DomainNameApi('u', 'p', { testMode, telemetry, sentryDsn })
+      // Options object: new DomainNameApi(resellerId, apiKey, { testMode, telemetry, sentryDsn })
       const { testMode: tm = false, telemetry, sentryDsn } = optionsOrTestMode;
       testMode = Boolean(tm);
       if (telemetry !== undefined) options.telemetry = telemetry;
       if (sentryDsn !== undefined) options.sentryDsn = sentryDsn;
     }
 
-    if (looksLikeUuid(userName)) {
-      this.client = new DNARest(userName, password, testMode, options);
-      this._transport = 'REST';
-    } else {
-      this.client = new DNASoap(userName, password, testMode, options);
-      this._transport = 'SOAP';
-    }
-  }
-
-  getActiveTransport() {
-    return this._transport;
+    this.client = new DNARest(resellerId, apiKey, testMode, options);
   }
 
   /**
-   * Enable or disable error reporting on the underlying transport client.
+   * Always 'REST' — kept for backward compatibility.
+   * @returns {'REST'}
+   */
+  getActiveTransport() {
+    return 'REST';
+  }
+
+  /**
+   * Enable or disable error reporting on the underlying client.
    * @param {boolean} enabled
    * @returns {this}
    */
@@ -55,7 +52,7 @@ class DomainNameApi {
   }
 }
 
-// Delegate every public method to the active client.
+// Delegate every public method to the REST client.
 for (const name of BUSINESS_METHODS) {
   DomainNameApi.prototype[name] = function delegate(...args) {
     return this.client[name](...args);

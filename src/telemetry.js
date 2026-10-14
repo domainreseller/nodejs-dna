@@ -112,12 +112,11 @@ function _buildCommonTags(error, context) {
     tags.reseller = String(context.reseller);
   }
 
-  // Extract domain from lastRequest (mirrors PHP: payload.domainName / request.DomainName)
+  // Extract domain from lastRequest (mirrors PHP: payload.domainName)
   const lr = context.lastRequest;
   if (lr && typeof lr === 'object') {
     const domain =
       (lr.payload && lr.payload.domainName) ||
-      (lr.request && lr.request.DomainName) ||
       null;
     if (domain && typeof domain === 'string' && domain.trim()) {
       tags.domain = domain.trim();
@@ -128,7 +127,8 @@ function _buildCommonTags(error, context) {
     tags.operation = String(context.lastFunction);
   }
 
-  tags.api_type = context.transport || 'REST';
+  // Kept as a constant so existing Sentry filters on api_type still match.
+  tags.api_type = 'REST';
 
   if (error) {
     const msg = String(error.message || '');
@@ -251,7 +251,7 @@ function _buildSentryClassification(error, context) {
  *
  * @param {Error} error
  * @param {{ version?: string, application?: string, environment?: string,
- *           transport?: string, reseller?: string, lastRequest?: object,
+ *           reseller?: string, lastRequest?: object,
  *           lastResponse?: object, lastFunction?: string, startAt?: number }} context
  * @returns {object} Sentry store event
  */
@@ -279,7 +279,7 @@ function buildSentryEvent(error, context) {
     runtime_version: process.version,
     elapsed_time: elapsed,
     application: context.application || 'UNKNOWN',
-    transport: context.transport || 'REST',
+    transport: 'REST',
     trace_id: traceId,
     ...classification.tags,
   };
@@ -326,7 +326,7 @@ function buildSentryEvent(error, context) {
  * Fire-and-forget: report an error to Sentry. Never throws.
  *
  * @param {{ dsn: string, enabled: boolean, version?: string,
- *           application?: string, environment?: string, transport?: string,
+ *           application?: string, environment?: string,
  *           reseller?: string, lastRequest?: object, lastResponse?: object,
  *           lastFunction?: string, startAt?: number,
  *           _fetch?: Function }} config
@@ -353,7 +353,6 @@ async function reportError(config, error) {
       version: config.version,
       application: config.application,
       environment: config.environment,
-      transport: config.transport,
       reseller: config.reseller,
       lastRequest: config.lastRequest,
       lastResponse: config.lastResponse,

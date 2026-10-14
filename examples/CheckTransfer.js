@@ -4,18 +4,14 @@
  */
 const DomainNameApi = require('..'); // or require('nodejs-dna') once installed
 
-// Credentials — two styles, one constructor (or set DNA_USER / DNA_PASS env vars):
-//   REST (new panel, recommended): Reseller ID (UUID) + API Key
+// Credentials: Reseller ID (UUID) + API Key (or set DNA_RESELLER_ID / DNA_API_KEY env vars):
 //       new DomainNameApi('xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx', 'your-api-key')
-//   SOAP (legacy):                 API username + API password
-//       new DomainNameApi('your-api-username', 'your-api-password')
-// The client picks the right API automatically (UUID -> REST, anything else -> SOAP).
 // NOTE: these are API credentials from your DomainNameAPI panel (API Settings),
-//       NOT your panel login e-mail and password.
-const username = process.env.DNA_USER || 'your-api-username'; // or Reseller ID: 'xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx'
-const password = process.env.DNA_PASS || 'your-api-password'; // or API Key: 'your-api-key'
+//       NOT your panel login credentials.
+const resellerId = process.env.DNA_RESELLER_ID || 'xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx';
+const apiKey = process.env.DNA_API_KEY || 'your-api-key';
 
-const api = new DomainNameApi(username, password);
+const api = new DomainNameApi(resellerId, apiKey);
 
 async function main() {
   /**
@@ -23,9 +19,8 @@ async function main() {
    * @param {string} domainName  The fully-qualified domain to check
    * @param {string} authcode    EPP/auth code to validate
    * @returns {Object}
-   *   REST: { result, data: { TransferAvailabilityStatus, AuthCodeIsRequired, AuthCodeIsValid,
-   *                           UserTransferRequired, TransferLock, Message, MessageKey, Additional } }
-   *   SOAP: { result: 'OK' } or { result: 'ERROR' }
+   *   { result, data: { TransferAvailabilityStatus, AuthCodeIsRequired, AuthCodeIsValid,
+   *                     UserTransferRequired, TransferLock, Message, MessageKey, Additional } }
    */
   const result = await api.CheckTransfer('example.com', 'EPP-AUTH-CODE-HERE');
   console.dir(result, { depth: null });
@@ -34,7 +29,7 @@ async function main() {
 main().catch(console.error);
 
 /*
-Sample output (REST transport — transferable domain):
+Sample output (transferable domain):
 {
   result: 'OK',
   data: {
@@ -48,7 +43,4 @@ Sample output (REST transport — transferable domain):
     Additional:                 []
   }
 }
-
-Sample output (SOAP transport):
-{ result: 'OK' }
 */

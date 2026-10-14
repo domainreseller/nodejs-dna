@@ -109,7 +109,6 @@ function makeConfig(overrides = {}) {
     version: '3.0.0',
     application: 'TestApp',
     environment: 'test',
-    transport: 'REST',
     reseller: 'reseller-001',
     lastRequest: { payload: { domainName: 'example.com' } },
     lastResponse: { status: 'ok' },
@@ -407,7 +406,6 @@ test('buildSentryEvent returns an object with all required Sentry fields', () =>
     version: '1.2.3',
     application: 'MyApp',
     environment: 'production',
-    transport: 'SOAP',
     reseller: 'res-abc',
     lastFunction: 'Renew',
     startAt: Date.now() - 100,
@@ -422,7 +420,8 @@ test('buildSentryEvent returns an object with all required Sentry fields', () =>
   assert.strictEqual(event.release, '1.2.3');
   assert.strictEqual(event.environment, 'production');
   assert.strictEqual(event.tags.runtime_name, 'Node.js');
-  assert.strictEqual(event.tags.transport, 'SOAP');
+  assert.strictEqual(event.tags.transport, 'REST');
+  assert.strictEqual(event.tags.api_type, 'REST');
   assert.strictEqual(event.tags.reseller, 'res-abc');
   assert.strictEqual(event.tags.operation, 'Renew');
   assert.ok(Array.isArray(event.exception.values));
