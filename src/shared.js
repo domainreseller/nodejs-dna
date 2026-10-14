@@ -1,6 +1,6 @@
 'use strict';
 
-const VERSION = '3.0.2';
+const VERSION = '4.0.0';
 const APPLICATION_NAME = 'DomainNameAPI-NodeJS';
 
 const REST_URL_PROD = 'https://api.domainresellerapi.com/api/v1';
