@@ -4,6 +4,14 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [Unreleased]
+
+### Added
+
+- Every API request now carries `X-App` and `X-Version` headers identifying the integration that uses the library. Defaults are `X-App: nodejs` and the library version.
+- `setClientInfo(app, version)` (chainable) and `getClientInfo()` on `DomainNameApi` and `DNARest`, mirroring php-dna. The app name is lowercased and limited to `[a-z0-9._-]`; the version keeps digits and dots only (`V2.0.20-beta` → `2.0.20`). Empty values fall back to the defaults.
+- `clientInfo: { app, version }` constructor option.
+
 ## [3.0.0] - 2026-07-04
 
 ### Added
