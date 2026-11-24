@@ -14,6 +14,13 @@ const _axiosInstance = axios.create({
   httpsAgent: _httpsAgent,
 });
 
+const DEFAULT_CLIENT_APP = 'nodejs';
+
+/** Keep only digits and dots: "V2.0.20-beta" becomes "2.0.20". */
+function normalizeClientVersion(version) {
+  return String(version ?? '').replace(/[^0-9.]/g, '').replace(/^\.+|\.+$/g, '');
+}
+
 class DNARest {
   constructor(resellerId, token, testMode = false, options = {}) {
     this.resellerId = resellerId;
@@ -29,6 +36,40 @@ class DNARest {
     this.errorReportingEnabled = options.telemetry !== false;
     this.sentryDsn = options.sentryDsn || DEFAULT_SENTRY_DSN;
     this.startAt = Date.now();
+    // Sent as X-App / X-Version on every request (see setClientInfo).
+    this.clientApp = DEFAULT_CLIENT_APP;
+    this.clientVersion = '';
+    if (options.clientInfo && typeof options.clientInfo === 'object') {
+      this.setClientInfo(options.clientInfo.app, options.clientInfo.version);
+    }
+  }
+
+  /**
+   * Identify the integration that uses the library. Every API request then
+   * carries the headers X-App (the application, lowercase, e.g. "wisecp")
+   * and X-Version (its version, digits and dots only, e.g. "2.0.20").
+   * Without this call the library sends X-App: nodejs and its own version.
+   *
+   * @param {string} app        Application name, e.g. "whmcs" or "WiseCP"
+   * @param {string} [version]  Application version, e.g. "V2.0.20" (sent as 2.0.20)
+   * @returns {this}
+   */
+  setClientInfo(app, version = '') {
+    const normalizedApp = String(app ?? '').trim().toLowerCase().replace(/[^a-z0-9._-]/g, '');
+    this.clientApp = normalizedApp !== '' ? normalizedApp : DEFAULT_CLIENT_APP;
+    this.clientVersion = normalizeClientVersion(version);
+    return this;
+  }
+
+  /**
+   * The X-App and X-Version values sent with every request.
+   * @returns {{ app: string, version: string }}
+   */
+  getClientInfo() {
+    return {
+      app: this.clientApp,
+      version: this.clientVersion !== '' ? this.clientVersion : normalizeClientVersion(VERSION),
+    };
   }
 
   /**
@@ -76,6 +117,7 @@ class DNARest {
   async request(method, endpoint, data = {}) {
     const url = `${this.serviceUrl}/${endpoint.replace(/^\//, '')}`;
 
+    const clientInfo = this.getClientInfo();
     const config = {
       method,
       url,
@@ -84,6 +126,8 @@ class DNARest {
         '__reseller': this.resellerId,
         'Content-Type': 'application/json',
         'Accept': 'application/json',
+        'X-App': clientInfo.app,
+        'X-Version': clientInfo.version,
       },
       timeout: DEFAULT_TIMEOUT * 1000,
     };

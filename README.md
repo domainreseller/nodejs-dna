@@ -67,6 +67,7 @@ new DomainNameApi(resellerId, apiKey, optionsOrTestMode = false)
   testMode:  false,        // true → REST OTE endpoint (ote.domainresellerapi.com)
   telemetry: true,         // false → disable error reporting to Sentry
   sentryDsn: undefined,    // override the default Sentry DSN
+  clientInfo: undefined,   // { app, version } sent as X-App / X-Version (see "Identifying your integration")
 }
 ```
 
@@ -79,6 +80,26 @@ const api = new DomainNameApi('reseller-id-uuid', 'api-key', true);
 // Options object — preferred for v3
 const api = new DomainNameApi('reseller-id-uuid', 'api-key', { testMode: true, telemetry: false });
 ```
+
+## Identifying your integration
+
+Every API request carries two headers that tell the API which application is using the library:
+
+| Header | Value | Default |
+|--------|-------|---------|
+| `X-App` | Application name, lowercased; only `a-z 0-9 . _ -` are kept | `nodejs` |
+| `X-Version` | Application version, digits and dots only (`V2.0.20-beta` → `2.0.20`) | the library version |
+
+Set them once after construction (or with the `clientInfo` constructor option):
+
+```js
+api.setClientInfo('WiseCP5', 'V2.0.20-beta'); // sends X-App: wisecp5, X-Version: 2.0.20
+api.getClientInfo();                          // { app: 'wisecp5', version: '2.0.20' }
+
+const api2 = new DomainNameApi('reseller-id-uuid', 'api-key', { clientInfo: { app: 'whmcs', version: '8.13.1' } });
+```
+
+An empty or invalid app name falls back to `nodejs`; an empty version falls back to the library version. `setClientInfo()` returns the client, so it can be chained.
 
 ## Endpoints
 
