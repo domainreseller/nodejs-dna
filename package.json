@@ -14,6 +14,7 @@
   ],
   "scripts": {
     "test": "node test/smoke.js",
+    "test:unit": "node --test test/*.test.js",
     "example": "node test.js",
     "example:register": "node test-register.js"
   },
