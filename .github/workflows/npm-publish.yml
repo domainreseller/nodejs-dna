@@ -3,7 +3,12 @@
 # Uses npm trusted publishing (OIDC), so no npm token is stored in this repo.
 # One-time setup on npmjs.com: nodejs-dna -> Settings -> Trusted Publisher ->
 # GitHub Actions, organization "domainreseller", repository "nodejs-dna",
-# workflow "npm-publish.yml".
+# workflow "npm-publish.yml". Then set the repository variable
+# NPM_TRUSTED_PUBLISHING to true.
+#
+# Until that variable is true the publish job only prints a notice and
+# succeeds, so a release never shows a red run while npm is still published
+# by hand.
 
 name: Node.js Package
 
@@ -30,15 +35,28 @@ jobs:
       contents: read
       id-token: write
     steps:
+      - name: Check the publishing setup
+        id: creds
+        run: |
+          if [ "${{ vars.NPM_TRUSTED_PUBLISHING }}" = "true" ]; then
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "::notice::npm trusted publishing is not set up yet (NPM_TRUSTED_PUBLISHING variable), skipping the publish."
+          fi
       - uses: actions/checkout@v5
+        if: steps.creds.outputs.ready == 'true'
       - uses: actions/setup-node@v5
+        if: steps.creds.outputs.ready == 'true'
         with:
           node-version: 24
           registry-url: https://registry.npmjs.org/
       # Trusted publishing needs npm 11.5.1 or newer.
-      - run: npm install -g npm@latest
-      - run: npm ci
+      - if: steps.creds.outputs.ready == 'true'
+        run: npm install -g npm@latest
+      - if: steps.creds.outputs.ready == 'true'
+        run: npm ci
       - name: Skip when this version is already on npm
+        if: steps.creds.outputs.ready == 'true'
         id: check
         run: |
           v=$(node -p "require('./package.json').version")
@@ -46,5 +64,5 @@ jobs:
             echo "nodejs-dna@$v is already published, nothing to do."
             echo "skip=true" >> "$GITHUB_OUTPUT"
           fi
-      - if: steps.check.outputs.skip != 'true'
+      - if: steps.creds.outputs.ready == 'true' && steps.check.outputs.skip != 'true'
         run: npm publish --provenance --access public
