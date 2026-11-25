@@ -24,8 +24,8 @@ for (const method of expectedMethods) {
   assert.strictEqual(typeof restApi[method], 'function', `facade should expose ${method}()`);
 }
 
-// Full 25-method surface must exist on the facade.
-assert.strictEqual(BUSINESS_METHODS.length, 25, `BUSINESS_METHODS should list exactly 25 methods (got ${BUSINESS_METHODS.length})`);
+// Full 22-method surface must exist on the facade.
+assert.strictEqual(BUSINESS_METHODS.length, 22, `BUSINESS_METHODS should list exactly 22 methods (got ${BUSINESS_METHODS.length})`);
 for (const method of BUSINESS_METHODS) {
   assert.strictEqual(typeof restApi[method], 'function', `REST facade should expose ${method}()`);
 }

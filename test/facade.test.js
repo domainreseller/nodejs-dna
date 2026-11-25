@@ -41,15 +41,15 @@ test('VERSION is exposed', () => {
 });
 
 // ---------------------------------------------------------------------------
-// Phase 3 Task 3: 25-method parity assertions
+// Phase 3 Task 3: 22-method parity assertions
 // ---------------------------------------------------------------------------
 
-test('BUSINESS_METHODS contains exactly 25 entries', () => {
-  assert.strictEqual(BUSINESS_METHODS.length, 25,
-    `Expected 25 methods but got ${BUSINESS_METHODS.length}: ${BUSINESS_METHODS.join(', ')}`);
+test('BUSINESS_METHODS contains exactly 22 entries', () => {
+  assert.strictEqual(BUSINESS_METHODS.length, 22,
+    `Expected 22 methods but got ${BUSINESS_METHODS.length}: ${BUSINESS_METHODS.join(', ')}`);
 });
 
-test('REST-routed facade exposes all 25 BUSINESS_METHODS as functions', () => {
+test('REST-routed facade exposes all 22 BUSINESS_METHODS as functions', () => {
   const api = new DomainNameApi('550e8400-e29b-41d4-a716-446655440000', 'token');
   for (const name of BUSINESS_METHODS) {
     assert.strictEqual(typeof api[name], 'function',

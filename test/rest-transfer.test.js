@@ -1,6 +1,6 @@
 'use strict';
 // test/rest-transfer.test.js
-// TDD tests for Transfer, CancelTransfer, ApproveTransfer, RejectTransfer (Task 8).
+// TDD tests for Transfer (Task 8).
 // All tests are network-free: c.request is stubbed before each call.
 
 const assert = require('node:assert');
@@ -11,12 +11,9 @@ const DNARest = require('../src/DNARest');
 // Existence checks (synchronous — no stub, no unhandled rejections)
 // ---------------------------------------------------------------------------
 
-test('Transfer, CancelTransfer, ApproveTransfer, RejectTransfer are real functions', () => {
+test('Transfer is a real function', () => {
   const c = new DNARest('r', 't');
   assert.strictEqual(typeof c.Transfer,        'function', 'Transfer must be a function');
-  assert.strictEqual(typeof c.CancelTransfer,  'function', 'CancelTransfer must be a function');
-  assert.strictEqual(typeof c.ApproveTransfer, 'function', 'ApproveTransfer must be a function');
-  assert.strictEqual(typeof c.RejectTransfer,  'function', 'RejectTransfer must be a function');
 });
 
 // ---------------------------------------------------------------------------
@@ -154,175 +151,4 @@ test('Transfer error falls back to TRANSFER_DOMAIN when no statusCode', async ()
 
   assert.strictEqual(out.result,     'ERROR');
   assert.strictEqual(out.error.Code, 'TRANSFER_DOMAIN');
-});
-
-// ---------------------------------------------------------------------------
-// CancelTransfer
-// ---------------------------------------------------------------------------
-
-test('CancelTransfer sends POST to domains/transfers/cancel with correct payload', async () => {
-  const c = new DNARest('r', 't');
-  let capturedVerb, capturedEp, capturedData;
-  c.request = async (verb, ep, data) => {
-    capturedVerb = verb;
-    capturedEp   = ep;
-    capturedData = data;
-    return {};
-  };
-
-  await c.CancelTransfer('example.com');
-
-  assert.strictEqual(capturedVerb, 'POST');
-  assert.strictEqual(capturedEp,   'domains/transfers/cancel');
-  assert.deepStrictEqual(capturedData, { domainName: 'example.com' });
-});
-
-test('CancelTransfer returns default Status "Cancelled" when response.status absent', async () => {
-  const c = new DNARest('r', 't');
-  c.request = async () => ({});   // no status key in response
-
-  const out = await c.CancelTransfer('example.com');
-
-  assert.strictEqual(out.result,          'OK');
-  assert.strictEqual(out.data.DomainName, 'example.com');
-  assert.strictEqual(out.data.Status,     'Cancelled');
-});
-
-test('CancelTransfer returns response.status when present', async () => {
-  const c = new DNARest('r', 't');
-  c.request = async () => ({ status: 'PendingCancellation' });
-
-  const out = await c.CancelTransfer('example.com');
-
-  assert.strictEqual(out.result,      'OK');
-  assert.strictEqual(out.data.Status, 'PendingCancellation');
-});
-
-test('CancelTransfer returns error envelope on HTTP error', async () => {
-  const c = new DNARest('r', 't');
-  c.request = async () => {
-    const err = new Error('HTTP 404');
-    err.statusCode = 404;
-    throw err;
-  };
-
-  const out = await c.CancelTransfer('example.com');
-
-  assert.strictEqual(out.result,     'ERROR');
-  assert.strictEqual(out.error.Code, 'API_404');
-  assert.ok(out.error.Message);
-});
-
-// ---------------------------------------------------------------------------
-// ApproveTransfer
-// ---------------------------------------------------------------------------
-
-test('ApproveTransfer sends POST to domains/transfers/approve with correct payload', async () => {
-  const c = new DNARest('r', 't');
-  let capturedVerb, capturedEp, capturedData;
-  c.request = async (verb, ep, data) => {
-    capturedVerb = verb;
-    capturedEp   = ep;
-    capturedData = data;
-    return {};
-  };
-
-  await c.ApproveTransfer('example.com');
-
-  assert.strictEqual(capturedVerb, 'POST');
-  assert.strictEqual(capturedEp,   'domains/transfers/approve');
-  assert.deepStrictEqual(capturedData, { domainName: 'example.com' });
-});
-
-test('ApproveTransfer returns default Status "Approved" when response.status absent', async () => {
-  const c = new DNARest('r', 't');
-  c.request = async () => ({});   // no status key in response
-
-  const out = await c.ApproveTransfer('example.com');
-
-  assert.strictEqual(out.result,          'OK');
-  assert.strictEqual(out.data.DomainName, 'example.com');
-  assert.strictEqual(out.data.Status,     'Approved');
-});
-
-test('ApproveTransfer returns response.status when present', async () => {
-  const c = new DNARest('r', 't');
-  c.request = async () => ({ status: 'TransferApproved' });
-
-  const out = await c.ApproveTransfer('example.com');
-
-  assert.strictEqual(out.result,      'OK');
-  assert.strictEqual(out.data.Status, 'TransferApproved');
-});
-
-test('ApproveTransfer returns error envelope on HTTP error', async () => {
-  const c = new DNARest('r', 't');
-  c.request = async () => {
-    const err = new Error('HTTP 500');
-    err.statusCode = 500;
-    throw err;
-  };
-
-  const out = await c.ApproveTransfer('example.com');
-
-  assert.strictEqual(out.result,     'ERROR');
-  assert.strictEqual(out.error.Code, 'API_500');
-  assert.ok(out.error.Message);
-});
-
-// ---------------------------------------------------------------------------
-// RejectTransfer
-// ---------------------------------------------------------------------------
-
-test('RejectTransfer sends POST to domains/transfers/reject with correct payload', async () => {
-  const c = new DNARest('r', 't');
-  let capturedVerb, capturedEp, capturedData;
-  c.request = async (verb, ep, data) => {
-    capturedVerb = verb;
-    capturedEp   = ep;
-    capturedData = data;
-    return {};
-  };
-
-  await c.RejectTransfer('example.com');
-
-  assert.strictEqual(capturedVerb, 'POST');
-  assert.strictEqual(capturedEp,   'domains/transfers/reject');
-  assert.deepStrictEqual(capturedData, { domainName: 'example.com' });
-});
-
-test('RejectTransfer returns default Status "Rejected" when response.status absent', async () => {
-  const c = new DNARest('r', 't');
-  c.request = async () => ({});   // no status key in response
-
-  const out = await c.RejectTransfer('example.com');
-
-  assert.strictEqual(out.result,          'OK');
-  assert.strictEqual(out.data.DomainName, 'example.com');
-  assert.strictEqual(out.data.Status,     'Rejected');
-});
-
-test('RejectTransfer returns response.status when present', async () => {
-  const c = new DNARest('r', 't');
-  c.request = async () => ({ status: 'TransferRejected' });
-
-  const out = await c.RejectTransfer('example.com');
-
-  assert.strictEqual(out.result,      'OK');
-  assert.strictEqual(out.data.Status, 'TransferRejected');
-});
-
-test('RejectTransfer returns error envelope on HTTP error', async () => {
-  const c = new DNARest('r', 't');
-  c.request = async () => {
-    const err = new Error('HTTP 403');
-    err.statusCode = 403;
-    throw err;
-  };
-
-  const out = await c.RejectTransfer('example.com');
-
-  assert.strictEqual(out.result,     'ERROR');
-  assert.strictEqual(out.error.Code, 'API_403');
-  assert.ok(out.error.Message);
 });

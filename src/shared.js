@@ -10,7 +10,7 @@ const REST_URL_OTE = 'https://ote.domainresellerapi.com/api/v1';
 // (Task 3) and the facade (Task 4) both build their delegations from this list.
 const BUSINESS_METHODS = [
   'AddChildNameServer', 'DeleteChildNameServer', 'ModifyChildNameServer', 'GetContacts',
-  'SaveContacts', 'Transfer', 'CancelTransfer', 'ApproveTransfer', 'RejectTransfer', 'Renew',
+  'SaveContacts', 'Transfer', 'Renew',
   'RegisterWithContactInfo', 'ModifyPrivacyProtectionStatus', 'SyncFromRegistry',
   'GetCurrentBalance', 'CheckAvailability', 'GetList', 'GetTldList', 'GetDetails', 'GetResellerDetails',
   // Phase 3 additions (Task 3): 4 new API methods + 2 pure utilities

@@ -737,7 +737,7 @@ DNARest.prototype.ModifyChildNameServer = async function ModifyChildNameServer(d
 };
 
 // ---------------------------------------------------------------------------
-// Task 8: Transfer group — Transfer, CancelTransfer, ApproveTransfer, RejectTransfer
+// Task 8: Transfer group — Transfer
 // PHP source: DNARest.php lines 1111–1138 (#12), 1145–1164 (#13), 1171–1190 (#14), 1197–1216 (#15)
 // ---------------------------------------------------------------------------
 
@@ -784,90 +784,6 @@ DNARest.prototype.Transfer = async function Transfer(domainName, eppCode, period
   } catch (err) {
     return setError(
       err.statusCode || 'TRANSFER_DOMAIN',
-      err.message,
-      (this.lastParsedResponse && this.lastParsedResponse.Details) ||
-        (this.lastResponse && this.lastResponse.raw_response) ||
-        err.message,
-    );
-  }
-};
-
-/**
- * Cancel a pending incoming transfer.
- * POST domains/transfers/cancel
- * PHP lines 1145–1164.
- *
- * @param {string} domainName
- */
-DNARest.prototype.CancelTransfer = async function CancelTransfer(domainName) {
-  try {
-    const response = await this.request('POST', 'domains/transfers/cancel', { domainName });
-    return {
-      result: RESULT_OK,
-      data: {
-        DomainName: domainName,
-        Status:     response.status ?? 'Cancelled',
-      },
-    };
-  } catch (err) {
-    return setError(
-      err.statusCode || 'CANCEL_TRANSFER',
-      err.message,
-      (this.lastParsedResponse && this.lastParsedResponse.Details) ||
-        (this.lastResponse && this.lastResponse.raw_response) ||
-        err.message,
-    );
-  }
-};
-
-/**
- * Approve a pending outgoing transfer.
- * POST domains/transfers/approve
- * PHP lines 1171–1190.
- *
- * @param {string} domainName
- */
-DNARest.prototype.ApproveTransfer = async function ApproveTransfer(domainName) {
-  try {
-    const response = await this.request('POST', 'domains/transfers/approve', { domainName });
-    return {
-      result: RESULT_OK,
-      data: {
-        DomainName: domainName,
-        Status:     response.status ?? 'Approved',
-      },
-    };
-  } catch (err) {
-    return setError(
-      err.statusCode || 'APPROVE_TRANSFER',
-      err.message,
-      (this.lastParsedResponse && this.lastParsedResponse.Details) ||
-        (this.lastResponse && this.lastResponse.raw_response) ||
-        err.message,
-    );
-  }
-};
-
-/**
- * Reject a pending outgoing transfer.
- * POST domains/transfers/reject
- * PHP lines 1197–1216.
- *
- * @param {string} domainName
- */
-DNARest.prototype.RejectTransfer = async function RejectTransfer(domainName) {
-  try {
-    const response = await this.request('POST', 'domains/transfers/reject', { domainName });
-    return {
-      result: RESULT_OK,
-      data: {
-        DomainName: domainName,
-        Status:     response.status ?? 'Rejected',
-      },
-    };
-  } catch (err) {
-    return setError(
-      err.statusCode || 'REJECT_TRANSFER',
       err.message,
       (this.lastParsedResponse && this.lastParsedResponse.Details) ||
         (this.lastResponse && this.lastResponse.raw_response) ||
