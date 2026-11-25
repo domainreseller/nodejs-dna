@@ -1,5 +1,9 @@
-# This workflow will run tests using node and then publish a package to GitHub Packages when a release is created
-# For more information see: https://docs.github.com/en/actions/publishing-packages/publishing-nodejs-packages
+# Publishes the package to npm when a GitHub release is created.
+#
+# Uses npm trusted publishing (OIDC), so no npm token is stored in this repo.
+# One-time setup on npmjs.com: nodejs-dna -> Settings -> Trusted Publisher ->
+# GitHub Actions, organization "domainreseller", repository "nodejs-dna",
+# workflow "npm-publish.yml".
 
 name: Node.js Package
 
@@ -11,23 +15,36 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
         with:
-          node-version: 20
+          node-version: 24
       - run: npm ci
+      - run: npm run test:unit
       - run: npm test
 
   publish-npm:
     needs: build
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
         with:
-          node-version: 20
+          node-version: 24
           registry-url: https://registry.npmjs.org/
+      # Trusted publishing needs npm 11.5.1 or newer.
+      - run: npm install -g npm@latest
       - run: npm ci
-      - run: npm publish
-        env:
-          NODE_AUTH_TOKEN: ${{secrets.npm_token}}
+      - name: Skip when this version is already on npm
+        id: check
+        run: |
+          v=$(node -p "require('./package.json').version")
+          if npm view "nodejs-dna@$v" version >/dev/null 2>&1; then
+            echo "nodejs-dna@$v is already published, nothing to do."
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          fi
+      - if: steps.check.outputs.skip != 'true'
+        run: npm publish --provenance --access public
