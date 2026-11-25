@@ -17,7 +17,7 @@ Or download the latest tested package from **https://github.com/domainreseller/n
 ## Features
 
 - **REST API** — authenticate with your Reseller ID and API Key
-- **25 API methods** covering registration, renewal, transfer, contacts, nameservers, and account management
+- **22 API methods** covering registration, renewal, transfer, contacts, nameservers, and account management
 - **Unified return envelope** — consistent `{ result: 'OK', data: {...} }` / `{ result: 'ERROR', error: {...} }` across all methods
 - **Promise-based** — all network methods are `async` and return Promises; `ValidateContact` and `IsTrTLD` are synchronous utilities
 - **OTE / test mode** — a single flag switches to the REST sandbox endpoint
@@ -89,7 +89,7 @@ const api = new DomainNameApi('reseller-id-uuid', 'api-key', { testMode: true, t
 
 `api.getActiveTransport()` is kept for backward compatibility and always returns `'REST'`.
 
-All 25 methods are exposed through the same facade class. Most methods return the standard envelope shape; the few exceptions are listed in the table below.
+All 22 methods are exposed through the same facade class. Most methods return the standard envelope shape; the few exceptions are listed in the table below.
 
 ## Return envelope
 
@@ -135,7 +135,6 @@ A few methods intentionally deviate from the standard shape, matching the php-dn
 | `GetResellerDetails` | `{ result:'OK', id, active, name, balance, currency, symbol, balances }` — flat, no `data` key |
 | `GetCurrentBalance` | `{ OperationResult:'SUCCESS'\|'FAILED', Balance, CurrencyId, CurrencyName, CurrencySymbol, ... }` — no `result` key |
 | `CheckAvailability` | Bare **array** of availability objects on success |
-| `ApproveTransfer`, `CancelTransfer`, `RejectTransfer` | `{ result:'OK', data:{ DomainName, Status } }` |
 
 ## Common examples
 
@@ -359,9 +358,6 @@ if (res.result === 'OK') {
 |--------|-----------|-------------|
 | `Transfer` | `(domainName, eppCode, period, contacts=[])` | Initiate an incoming transfer |
 | `CheckTransfer` | `(domainName, authcode)` | Check transferability with EPP code |
-| `ApproveTransfer` | `(domainName)` | Approve a pending outgoing transfer |
-| `CancelTransfer` | `(domainName)` | Cancel a pending incoming transfer |
-| `RejectTransfer` | `(domainName)` | Reject a pending outgoing transfer |
 
 ### Lock management
 
