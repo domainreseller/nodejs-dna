@@ -4,13 +4,24 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
-## [Unreleased]
+## [4.1.0] - 2026-11-26
 
 ### Added
 
 - Every API request now carries `X-App` and `X-Version` headers identifying the integration that uses the library. Defaults are `X-App: nodejs` and the library version.
 - `setClientInfo(app, version)` (chainable) and `getClientInfo()` on `DomainNameApi` and `DNARest`, mirroring php-dna. The app name is lowercased and limited to `[a-z0-9._-]`; the version keeps digits and dots only (`V2.0.20-beta` → `2.0.20`). Empty values fall back to the defaults.
 - `clientInfo: { app, version }` constructor option.
+
+### Removed
+
+- `CancelTransfer`, `ApproveTransfer` and `RejectTransfer`. The REST gateway retired `domains/transfers/cancel`,
+  `approve` and `reject`, so these calls could no longer succeed. The facade now has 22 methods.
+
+### Build
+
+- CI runs the unit tests on Node 20, 22 and 24 for every push and pull request.
+- Releases are published to npm with trusted publishing once it is set up for this repository; until then the
+  publish job is skipped.
 
 ## [3.0.0] - 2026-07-04
 
